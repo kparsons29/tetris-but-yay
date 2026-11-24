@@ -750,9 +750,9 @@
     lockClock = gravityClock = softClock = 0;
     lockResets = 0;
     player.current.lastRotate = false;
-    if (collides(player.board, player.current)) playerTopOut();
     if (!ended && currentMode === "sprint" && player.lines >= 40) endMatch(true, "40 lines cleared in " + formatTime(runElapsed) + ".");
     else if (!ended && currentMode === "cheese" && player.lines >= 100) endMatch(true, "100 lines cleared. You conquered the cheese stack.");
+    else if (collides(player.board, player.current)) playerTopOut();
     updateUI();
   }
   function actionName(spin, lines, attack) {
