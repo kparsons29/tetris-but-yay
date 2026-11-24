@@ -96,7 +96,7 @@
         </section>
         <section class="settings-card">
           <div class="settings-card-head"><div><span class="section-kicker">03 / IN-GAME HUD</span><h2>VISIBLE STATS</h2></div><span class="settings-icon">▤</span></div>
-          <p class="settings-description">Choose which stats appear beneath the playing field. You can change this any time outside a run.</p>
+          <p class="settings-description">Choose which stats appear in the lower-right HUD. You can change this any time outside a run.</p>
           <div class="stat-options" id="statOptions">
             <label><input type="checkbox" value="score" checked><span>SCORE</span></label>
             <label><input type="checkbox" value="lines" checked><span>LINES</span></label>
@@ -105,6 +105,7 @@
             <label><input type="checkbox" value="combo"><span>COMBO</span></label>
             <label><input type="checkbox" value="b2b"><span>BACK-TO-BACK</span></label>
             <label><input type="checkbox" value="pieces"><span>PIECES</span></label>
+            <label><input type="checkbox" value="pps"><span>PPS</span></label>
             <label><input type="checkbox" value="apm"><span>APM</span></label>
             <label><input type="checkbox" value="attack"><span>ATTACK SENT</span></label>
             <label><input type="checkbox" value="incoming"><span>INCOMING</span></label>
@@ -131,6 +132,10 @@
             <canvas id="holdCanvas" width="120" height="84" aria-label="Held piece"></canvas>
             <p class="widget-hint" id="holdHint">EMPTY</p>
           </section>
+          <div class="clear-hud" aria-live="polite">
+            <div class="clear-popup" id="clearPopup" role="status"></div>
+            <div class="combo-counter" id="comboHud"><span>COMBO</span><strong id="comboCount">×0</strong></div>
+          </div>
           <section class="play-widget bot-info hidden" id="botInfo">
             <div class="widget-heading"><span>OPPONENT</span><span class="bot-rank-chip" id="botRankChip">LV. 3</span></div>
             <strong id="botNameInGame">STACK BOT</strong>
@@ -149,7 +154,6 @@
             <div class="pause-overlay hidden" id="resultOverlay"><div class="pause-card"><span class="section-kicker" id="resultKicker">RUN COMPLETE</span><h2 id="resultTitle">NICE RUN.</h2><p id="resultSummary">Your result will appear here.</p><div class="result-stats" id="resultStats"></div><button class="primary-button" id="retryGame">PLAY AGAIN <span>→</span></button><button class="secondary-button full-button" id="resultMenuButton">BACK TO MENU</button></div></div>
           </div>
           <div class="run-status"><span id="battleStatus">READY</span><span id="runObjective">CLEAR 40 LINES</span></div>
-          <div class="run-stats" id="runStats"></div>
           <div class="mobile-controls" aria-label="Touch controls">
             <button data-touch="left">◀<small>LEFT</small></button><button data-touch="down">▼<small>DROP</small></button><button data-touch="right">▶<small>RIGHT</small></button>
             <button data-touch="ccw">↶<small>CCW</small></button><button data-touch="cw">↻<small>CW</small></button><button data-touch="hard">⬇<small>HARD</small></button>
@@ -158,6 +162,7 @@
         </section>
         <aside class="play-side next-side">
           <section class="play-widget next-widget"><div class="widget-heading"><span>NEXT</span><span class="tiny-tag">5 QUEUE</span></div><canvas id="nextCanvas" width="140" height="340" aria-label="Next five pieces"></canvas></section>
+          <div class="run-stats" id="runStats"></div>
         </aside>
       </div>
     </section>
