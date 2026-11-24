@@ -192,7 +192,8 @@
       left: "display-left", right: "display-right", down: "display-down",
       hardDrop: "display-hardDrop", rotateCCW: "display-rotateCCW",
       rotateCW: "display-rotateCW", rotate180: "display-rotate180",
-      hold: "display-hold", pause: "display-pause"
+      hold: "display-hold", pause: "display-pause",
+      restart: "display-restart", start: "display-start"
     };
     for (const [action, id] of Object.entries(displayIds)) {
       const el = $(id);
