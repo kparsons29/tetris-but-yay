@@ -1338,9 +1338,9 @@
 
   updateSliderUI();
   renderKeybinds();
-  renderStatsSettings();
   updateModeScreen();
   resetMatch(false);
+  renderStatsSettings();
   showPage("homePage");
   requestAnimationFrame(loop);
 })();
