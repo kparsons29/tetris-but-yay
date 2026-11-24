@@ -413,16 +413,19 @@
       0: [0,1], 1: [1,3], 2: [2,3], 3: [0,2]
     }[piece.rot];
     const frontCount = Number(corners[front[0]]) + Number(corners[front[1]]);
-    return frontCount === 2 || piece.kick === 4 || piece.kick >= 9 ? "T-SPIN" : "MINI T-SPIN";
+    return frontCount === 2 || piece.kick === 4 ? "T-SPIN" : "MINI T-SPIN";
   }
   function attackFor(lines, spin, combo, b2bContinues) {
     let base = [0,0,1,2,4][lines] || 0;
     if (spin === "T-SPIN") base = [0,2,4,6][lines] || 0;
     if (spin === "MINI T-SPIN") base = [0,1,2,0,0][lines] || 0;
     let attack = base;
+    if (combo >= 1) {
+      attack = base > 0
+        ? Math.floor(base * (1 + 0.25 * combo))
+        : Math.floor(Math.log1p(1.25 * combo));
+    }
     if (base > 0 && b2bContinues) attack += 1;
-    if (combo >= 2) attack += Math.min(4, Math.floor((combo - 1) / 2));
-    if (base === 0 && combo >= 2) attack += Math.min(2, Math.floor(Math.log1p(combo) * 0.9));
     return Math.max(0, attack);
   }
   function scoreFor(lines, spin, level) {
