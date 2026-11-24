@@ -271,7 +271,7 @@
   let selectedBotLevel = 3;
   let runElapsed = 0;
   let blitzRemaining = 120000;
-  let selectedStats = ["score", "lines", "time"];
+  let selectedStats = ["score", "lines", "time", "pps"];
   const STAT_INFO = {
     score: ["SCORE", () => player.score.toLocaleString()],
     lines: ["LINES", () => player.lines],
