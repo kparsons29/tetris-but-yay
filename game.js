@@ -250,6 +250,45 @@
   let player = null;
   let bots = [];
   let started = false, paused = false, ended = false;
+  let currentPage = "homePage";
+  let currentMode = "sprint";
+  let selectedMode = "sprint";
+  let selectedBotLevel = 3;
+  let runElapsed = 0;
+  let blitzRemaining = 120000;
+  let selectedStats = ["score", "lines", "time"];
+  const STAT_INFO = {
+    score: ["SCORE", () => player.score.toLocaleString()],
+    lines: ["LINES", () => player.lines],
+    time: ["TIME", () => formatTime(currentMode === "blitz" ? Math.max(0, blitzRemaining) : runElapsed)],
+    level: ["LEVEL", () => player.level],
+    combo: ["COMBO", () => player.combo < 0 ? "—" : player.combo],
+    b2b: ["B2B", () => player.b2b ? "×" + player.b2b : "—"],
+    pieces: ["PIECES", () => player.pieces],
+    apm: ["APM", () => { const now = Date.now(); apmWindow = apmWindow.filter((time) => now - time < 60000); return apmWindow.length; }],
+    attack: ["ATTACK", () => player.sent],
+    incoming: ["INCOMING", () => player.incoming.length]
+  };
+  const MODE_INFO = {
+    cheese: { title: "100 LINE CHEESE", kicker: "SINGLEPLAYER / 100L CHEESE", objective: "DIG THROUGH THE CHEESE · CLEAR 100 LINES" },
+    sprint: { title: "40 LINE SPRINT", kicker: "SINGLEPLAYER / 40L SPRINT", objective: "CLEAR 40 LINES AS FAST AS POSSIBLE" },
+    blitz: { title: "2 MIN BLITZ", kicker: "SINGLEPLAYER / 2 MIN BLITZ", objective: "SCORE AS MUCH AS POSSIBLE IN 2 MINUTES" },
+    botplay: { title: "BOTPLAY", kicker: "SINGLEPLAYER / BOTPLAY", objective: "TOP OUT YOUR 1V1 OPPONENT" }
+  };
+  const BOT_TIERS = [
+    null,
+    { rank: "D–D+", pace: 1550, noise: 4.8, holes: 4.5, height: 0.45 },
+    { rank: "C−–C", pace: 1250, noise: 3.2, holes: 5.0, height: 0.55 },
+    { rank: "LOW B", pace: 930, noise: 1.8, holes: 5.8, height: 0.66 },
+    { rank: "A", pace: 640, noise: 0.75, holes: 6.2, height: 0.78 },
+    { rank: "S+", pace: 430, noise: 0.08, holes: 6.8, height: 0.95 }
+  ];
+  try {
+    const savedStats = JSON.parse(localStorage.getItem("stacklab-visible-stats") || "null");
+    if (Array.isArray(savedStats)) selectedStats = savedStats.filter((key) => Object.prototype.hasOwnProperty.call({
+      score:1,lines:1,time:1,level:1,combo:1,b2b:1,pieces:1,apm:1,attack:1,incoming:1
+    }, key));
+  } catch (_) { /* use defaults */ }
   let lastFrame = 0, gravityClock = 0, softClock = 0, lockClock = 0, lockResets = 0;
   let shift = { dir: 0, elapsed: 0, repeat: 0, instantDone: false };
   let held = new Set();
