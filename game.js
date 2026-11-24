@@ -754,7 +754,7 @@
   }
   function scoreFor(lines, spin, level, b2b = false, allClear = false) {
     const normal = [0,100,300,500,800][lines] || 0;
-    const full = [400,800,1200,1600][lines] || 0;
+    const full = [400,800,1200,1600,2600][lines] || 0;
     const mini = [100,200,400,800,1600][lines] || 0;
     let points = normal;
     if (spin === "T-SPIN") points = full || 400;
@@ -1037,7 +1037,8 @@
     bot.pieces++;
     const allClear = best.lines > 0 && best.board.every((row) => row.every((cell) => !cell));
     bot.score += scoreFor(best.lines, spin, bot.levelScore, wasB2B, allClear)
-      + (best.lines ? bot.combo * 50 * bot.levelScore : 0);
+      + (best.lines ? bot.combo * 50 * bot.levelScore : 0)
+      + Math.max(0,best.drop || 0) * 2;
     const unblockedAttack = cancelIncoming(bot, attack);
     if (unblockedAttack) sendBotAttack(bot, unblockedAttack);
     if (best.lines && Math.random() < 0.4) logEvent(bot.name + " cleared " + best.lines + " lines.", "muted");
@@ -1099,6 +1100,7 @@
     ctx.roundRect(x, y, w, h, r);
   }
   function drawSkinBlock(ctx,px,py,size,color) {
+    ctx.save();
     const skin = color === COLORS.G ? "classic" : pieceSkin;
     const x=px+1.3,y=py+1.3,w=size-2.6,h=size-2.6;
     if (skin === "flat") {
@@ -1122,6 +1124,7 @@
       ctx.fillStyle="rgba(255,255,255,.12)"; ctx.fillRect(px+2,py+2,size-4,1.3);
       ctx.fillStyle="rgba(0,0,0,.13)"; ctx.fillRect(px+2,py+size-3.2,size-4,1.2);
     }
+    ctx.restore();
   }
   function drawCell(ctx,x,y,color,size,alpha=1,ghost=false) {
     const px=x*size,py=y*size;
