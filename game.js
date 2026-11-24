@@ -742,7 +742,7 @@
     if (spin === "T-SPIN") base = [0,2,4,6,0][lines] || 0;
     if (spin === "MINI T-SPIN") base = [0,0,1,0,0][lines] || 0;
     // ALL-SPIN deliberately keeps the normal line-clear value.
-    const comboBonus = combo >= 0 ? (COMBO_ATTACK[Math.min(combo, 10)] || 5) : 0;
+    const comboBonus = combo >= 0 ? COMBO_ATTACK[Math.min(combo, 10)] : 0;
     return Math.max(0, base + comboBonus + b2bBonus);
   }
   function scoreFor(lines, spin, level) {
@@ -781,7 +781,7 @@
     const unblockedAttack = cancelIncoming(player, attack);
     const cancelledAttack = player.lastCancelled || 0;
     if (cleared > 0) {
-      showBoardPopup("attack", unblockedAttack);
+      if (unblockedAttack > 0 || cancelledAttack === 0) showBoardPopup("attack", unblockedAttack);
       if (cancelledAttack > 0) showBoardPopup("cancel", cancelledAttack);
     }
     if (unblockedAttack) sendPlayerAttack(unblockedAttack);
