@@ -199,6 +199,19 @@
       const el = $(id);
       if (el) el.textContent = keyLabel(keybinds[action]);
     }
+    const summary = $("keybindSummary");
+    if (summary) {
+      summary.textContent = "";
+      for (const action of ["left","right","down","hardDrop","rotateCCW","rotateCW","rotate180","hold"]) {
+        const item = document.createElement("span");
+        const label = keybindActions.find(([id]) => id === action)[1];
+        item.append(document.createTextNode(label.toUpperCase()));
+        const key = document.createElement("kbd");
+        key.textContent = keyLabel(keybinds[action]);
+        item.append(key);
+        summary.append(item);
+      }
+    }
   }
   function clearHeldControls() {
     held.clear();
@@ -1150,10 +1163,68 @@
     try { localStorage.setItem("stacklab-settings", JSON.stringify(settings)); } catch (_) {}
     updateSliderUI();
   }
+  function renderStatsSettings() {
+    document.querySelectorAll("#statOptions input").forEach((input) => {
+      input.checked = selectedStats.includes(input.value);
+    });
+    renderRunStats();
+  }
+  function saveStatsSettings() {
+    selectedStats = [...document.querySelectorAll("#statOptions input:checked")].map((input) => input.value);
+    try { localStorage.setItem("stacklab-visible-stats", JSON.stringify(selectedStats)); } catch (_) {}
+    renderRunStats();
+  }
+  function leaveToMenu() {
+    started = false;
+    paused = false;
+    held.clear();
+    shift.dir = 0;
+    $("pauseOverlay").classList.add("hidden");
+    $("resultOverlay").classList.add("hidden");
+    showPage("homePage");
+  }
+  function openSettings() {
+    showPage("settingsPage");
+    updateSliderUI();
+    renderKeybinds();
+    renderStatsSettings();
+  }
+  $("openSingleplayer").addEventListener("click", () => {
+    updateModeScreen();
+    showPage("singleplayerPage");
+  });
+  $("openSettings").addEventListener("click", openSettings);
+  $("brandHome").addEventListener("click", (event) => { event.preventDefault(); leaveToMenu(); });
+  document.querySelectorAll("[data-page]").forEach((button) => {
+    button.addEventListener("click", () => showPage(button.dataset.page));
+  });
+  document.querySelectorAll(".mode-card").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedMode = button.dataset.mode;
+      updateModeScreen();
+    });
+  });
+  document.querySelectorAll("[data-bot-level]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedBotLevel = Number(button.dataset.botLevel);
+      updateModeScreen();
+    });
+  });
+  $("startSelectedMode").addEventListener("click", beginSelectedMode);
+  $("gameMenuButton").addEventListener("click", leaveToMenu);
+  $("restartButton").addEventListener("click", () => resetMatch(true));
+  $("pauseButton").addEventListener("click", togglePause);
+  $("resumeButton").addEventListener("click", togglePause);
+  $("pauseRestartButton").addEventListener("click", () => resetMatch(true));
+  $("pauseMenuButton").addEventListener("click", leaveToMenu);
+  $("retryGame").addEventListener("click", () => resetMatch(true));
+  $("resultMenuButton").addEventListener("click", leaveToMenu);
+
   $("dasSlider").addEventListener("input", (event) => { settings.das = Number(event.target.value); saveSettings(); });
   $("arrSlider").addEventListener("input", (event) => { settings.arr = Number(event.target.value); saveSettings(); });
   $("sdfSlider").addEventListener("input", (event) => { settings.sdf = Number(event.target.value); saveSettings(); });
   $("dasCancel").addEventListener("change", (event) => { settings.dasCancel = event.target.checked; saveSettings(); });
+  document.querySelectorAll("#statOptions input").forEach((input) => input.addEventListener("change", saveStatsSettings));
   $("themeSelect").addEventListener("change", (event) => {
     document.body.dataset.theme = event.target.value;
     try { localStorage.setItem("stacklab-theme", event.target.value); } catch (_) {}
@@ -1166,9 +1237,6 @@
       $("themeSelect").value = theme;
     }
   } catch (_) {}
-  $("startButton").addEventListener("click", startMatch);
-  $("pauseButton").addEventListener("click", togglePause);
-  $("restartButton").addEventListener("click", () => resetMatch(true));
   $("editKeybinds").addEventListener("click", openKeybindEditor);
   $("closeKeybinds").addEventListener("click", closeKeybindEditor);
   $("doneKeybinds").addEventListener("click", closeKeybindEditor);
@@ -1215,10 +1283,15 @@
     if (action) event.preventDefault();
     if (!action) return;
     if (event.repeat && !["left","right","down"].includes(action)) return;
-    if (action === "start" && !started) { startMatch(); return; }
+    if (action === "start" && !started) {
+      if (currentPage === "homePage") { updateModeScreen(); showPage("singleplayerPage"); }
+      else if (currentPage === "singleplayerPage") beginSelectedMode();
+      else if (currentPage === "gamePage" && ended) resetMatch(true);
+      return;
+    }
     if (action === "pause") { togglePause(); return; }
-    if (action === "restart") { resetMatch(true); return; }
-    if (!started || paused) return;
+    if (action === "restart" && currentPage === "gamePage") { resetMatch(true); return; }
+    if (currentPage !== "gamePage" || !started || paused) return;
     if (action === "left" && !event.repeat) beginShift(-1);
     else if (action === "right" && !event.repeat) beginShift(1);
     else if (action === "down") held.add("down");
@@ -1248,7 +1321,7 @@
     };
     button.addEventListener("pointerdown", (event) => {
       event.preventDefault();
-      if (!started) { startMatch(); return; }
+      if (!started || currentPage !== "gamePage") return;
       if (action === "left") beginShift(-1);
       else if (action === "right") beginShift(1);
       else if (action === "down") held.add("down");
@@ -1266,6 +1339,9 @@
 
   updateSliderUI();
   renderKeybinds();
+  renderStatsSettings();
+  updateModeScreen();
   resetMatch(false);
+  showPage("homePage");
   requestAnimationFrame(loop);
 })();
