@@ -253,3 +253,101 @@ kbd { min-width: 22px; height: 21px; padding: 0 5px; display: inline-grid; place
   .board-footer { gap: 2px; }
   .battle-status span { font-size: 6px; }
 }
+
+
+/* Custom keybind editor */
+.edit-keybinds {
+  border: 1px solid rgba(79,225,209,.25);
+  border-radius: 4px;
+  background: rgba(79,225,209,.055);
+  color: var(--cyan);
+  padding: 4px 7px;
+  font: 8px var(--mono);
+  letter-spacing: .1em;
+  cursor: pointer;
+  transition: .18s ease;
+}
+.edit-keybinds:hover { border-color: rgba(79,225,209,.65); background: rgba(79,225,209,.12); }
+.keybind-backdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  padding: 20px;
+  display: grid;
+  place-items: center;
+  background: rgba(3,7,14,.78);
+  backdrop-filter: blur(12px);
+}
+.keybind-dialog {
+  width: min(560px, 100%);
+  max-height: min(780px, 92vh);
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid rgba(126,164,198,.25);
+  border-radius: 13px;
+  background: linear-gradient(145deg, #172337, #0d1523 78%);
+  box-shadow: 0 25px 90px rgba(0,0,0,.55), 0 0 55px rgba(79,225,209,.06);
+}
+.keybind-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.keybind-dialog-head h2 { margin: 5px 0 0; font-size: 21px; letter-spacing: .04em; }
+.keybind-intro { color: #91a2ba; font-size: 11px; line-height: 1.6; margin: 15px 0 17px; }
+.keybind-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.keybind-item {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 1px solid rgba(153,177,211,.12);
+  border-radius: 7px;
+  background: rgba(8,14,24,.35);
+}
+.keybind-item > span { color: #aebdd1; font: 9px var(--mono); letter-spacing: .03em; }
+.keybind-button {
+  min-width: 72px;
+  max-width: 135px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 6px 8px;
+  border: 1px solid #40506a;
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: #1c2a3e;
+  color: #e2f0ff;
+  font: 9px var(--mono);
+  cursor: pointer;
+  transition: .18s ease;
+}
+.keybind-button:hover { border-color: var(--cyan); color: var(--cyan); }
+.keybind-button.capturing {
+  color: #08151e;
+  border-color: var(--cyan);
+  background: var(--cyan);
+  animation: keybindPulse .8s infinite alternate;
+}
+@keyframes keybindPulse { from { box-shadow: 0 0 0 rgba(79,225,209,0); } to { box-shadow: 0 0 15px rgba(79,225,209,.28); } }
+.keybind-dialog-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.keybind-dialog-foot > span { color: #71839c; font: 8px var(--mono); line-height: 1.5; }
+.keybind-dialog-foot > div { display: flex; gap: 7px; flex: none; }
+.secondary-button {
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  background: rgba(255,255,255,.035);
+  color: #bac8da;
+  padding: 10px 11px;
+  font: 8px var(--mono);
+  letter-spacing: .08em;
+  cursor: pointer;
+}
+.secondary-button:hover { border-color: var(--cyan); color: var(--cyan); }
+.compact-button { padding: 10px 13px; font-size: 8px; }
+.keybind-dialog .icon-button { font-size: 20px; }
+@media (max-width: 480px) {
+  .keybind-backdrop { padding: 10px; }
+  .keybind-dialog { padding: 17px 13px; }
+  .keybind-grid { grid-template-columns: 1fr; }
+  .keybind-dialog-foot { align-items: stretch; flex-direction: column; }
+  .keybind-dialog-foot > div { justify-content: flex-end; }
+}
