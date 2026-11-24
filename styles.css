@@ -211,3 +211,8 @@ kbd{min-width:22px;height:21px;padding:0 5px;display:inline-grid;place-items:cen
  .mobile-controls small{display:block;color:#72849d;font:7px var(--mono);margin-top:2px}
  .site-footer{flex-wrap:wrap;line-height:1.5}.keybind-backdrop{padding:9px}.keybind-dialog{padding:17px 13px}.keybind-grid{grid-template-columns:1fr}.keybind-dialog-foot{align-items:stretch;flex-direction:column}.keybind-dialog-foot>div{justify-content:flex-end}
 }
+
+/* Immersive play view: hide all site chrome during a run. */
+.in-game .topbar, .in-game .site-footer { display: none; }
+.in-game #appRoot { min-height: 100vh; }
+.in-game .game-page { min-height: 100vh; padding-top: 17px; }
