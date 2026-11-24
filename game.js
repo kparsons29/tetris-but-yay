@@ -113,7 +113,13 @@
   try {
     const saved = JSON.parse(localStorage.getItem("stacklab-settings") || "{}");
     settings = { ...settings, ...saved };
-  } catch (_) { /* ignore malformed local settings */ }
+    // Migrate the previous 120 ms default once; preserve all other saved handling values.
+    if (localStorage.getItem("stacklab-latency-default-version") !== "2") {
+      if (settings.das === 120) settings.das = 100;
+      localStorage.setItem("stacklab-latency-default-version", "2");
+      localStorage.setItem("stacklab-settings", JSON.stringify(settings));
+    }
+  } catch (_) { /* ignore malformed or unavailable local settings */ }
 
   const defaultKeybinds = {
     left: "ArrowLeft", right: "ArrowRight", down: "ArrowDown",
