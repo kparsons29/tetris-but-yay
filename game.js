@@ -340,7 +340,7 @@
       pace, clock: 650, noise: tier.noise, holeWeight: tier.holes, heightWeight: tier.height,
       board: makeBoard(), queue: newQueue(), current: null, combo: -1, b2b: 0,
       incoming: [], incomingClock: 1000, lines: 0, sent: 0, alive: true,
-      pieces: 0, score: 0
+      pieces: 0, score: 0, dirty: true
     };
     state.current = takeNext(state);
     return state;
@@ -815,6 +815,7 @@
     const hole = state.incoming.shift();
     const removed = state.board.shift();
     state.board.push(Array.from({ length: W }, (_, x) => x === hole ? null : "G"));
+    state.dirty = true;
     if (removed.some(Boolean)) {
       if (isPlayer) playerTopOut();
       else state.alive = false;
@@ -933,6 +934,7 @@
     else if (best.lines > 0) bot.b2b = 0;
     const attack = attackFor(best.lines, spin, bot.combo, b2bContinues);
     bot.board = best.board;
+    bot.dirty = true;
     bot.lines += best.lines;
     bot.pieces++;
     bot.score += scoreFor(best.lines, spin, 1);
@@ -1074,8 +1076,13 @@
       ctx.fillRect(startX + x * cell + 2, startY + y * cell + 2, cell - 4, 1);
     }
   }
+  let previewCacheKey = null;
   function renderPreviews() {
-    drawPreview($("holdCanvas"), player && player.hold, 0, 17);
+    if (!player) return;
+    const key = (player.hold || "-") + "|" + player.queue.slice(0, 5).join("");
+    if (key === previewCacheKey) return;
+    previewCacheKey = key;
+    drawPreview($("holdCanvas"), player.hold, 0, 17);
     const canvas = $("nextCanvas");
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1132,7 +1139,10 @@
     if (frame) frame.style.transform = shake > 0
       ? "translate(" + ((Math.random() - .5) * shake) + "px," + ((Math.random() - .5) * shake) + "px)" : "";
     drawBoard($("playerBoard"), player.board, player.current, false);
-    if (bots.length) drawBoard($("botBoard0"), bots[0].board, null, true);
+    if (bots.length && bots[0].dirty) {
+      drawBoard($("botBoard0"), bots[0].board, null, true);
+      bots[0].dirty = false;
+    }
     renderPreviews();
     updateUI(forceStats);
   }
