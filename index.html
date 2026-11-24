@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090d16">
+  <meta name="description" content="A fast, configurable versus block-stacking game.">
+  <title>STACK//LAB — Versus</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="game.js" defer></script>
+</head>
+<body data-theme="aurora">
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="Stack Lab home">
+      <span class="brand-mark">S<span>+</span></span>
+      <span class="brand-name">STACK<span>//</span>LAB</span>
+    </a>
+    <div class="topbar-center">
+      <span class="live-dot"></span>
+      <span>VERSUS LAB</span>
+      <span class="topbar-divider">/</span>
+      <span class="muted">LOCAL MATCH</span>
+    </div>
+    <div class="topbar-actions">
+      <span class="system-chip"><span class="system-dot"></span> SRS+ ENGINE</span>
+      <label class="theme-picker">
+        <span>SCENE</span>
+        <select id="themeSelect" aria-label="Background theme">
+          <option value="aurora">Aurora</option>
+          <option value="midnight">Midnight</option>
+          <option value="sunset">Afterglow</option>
+        </select>
+      </label>
+      <button class="icon-button" id="pauseButton" title="Pause (P)" aria-label="Pause game">Ⅱ</button>
+      <button class="icon-button" id="restartButton" title="Restart (R)" aria-label="Restart match">↻</button>
+    </div>
+  </header>
+
+  <main class="game-layout">
+    <aside class="left-column">
+      <section class="panel identity-panel">
+        <div class="section-kicker">PLAYER 01</div>
+        <div class="player-name-row">
+          <div class="avatar">Y</div>
+          <div><h1>YOU</h1><p>THE CHALLENGER</p></div>
+          <span class="online-pill">ONLINE</span>
+        </div>
+        <div class="identity-footer"><span>RATING <b>UNRANKED</b></span><span>● SOLO</span></div>
+      </section>
+
+      <section class="panel mini-panel">
+        <div class="panel-heading"><span>HOLD</span><kbd>C</kbd></div>
+        <div class="piece-preview"><canvas id="holdCanvas" width="120" height="84" aria-label="Held piece"></canvas></div>
+        <div class="panel-subtext" id="holdHint">EMPTY — TAP C TO HOLD</div>
+      </section>
+
+      <section class="panel stats-panel">
+        <div class="panel-heading"><span>RUN DATA</span><span class="tiny-live">● LIVE</span></div>
+        <div class="stat-grid">
+          <div><span>SCORE</span><strong id="scoreValue">0</strong></div>
+          <div><span>LINES</span><strong id="linesValue">0</strong></div>
+          <div><span>LEVEL</span><strong id="levelValue">1</strong></div>
+          <div><span>COMBO</span><strong id="comboValue">—</strong></div>
+        </div>
+        <div class="streak-row"><span>BACK-TO-BACK</span><strong id="b2bValue">—</strong></div>
+        <div class="attack-meter">
+          <div class="attack-label"><span>INCOMING</span><strong id="incomingValue">0</strong></div>
+          <div class="meter-track"><i id="incomingBar"></i></div>
+          <div class="incoming-note" id="incomingNote">NO INCOMING ATTACKS</div>
+        </div>
+      </section>
+
+      <section class="panel handling-panel">
+        <div class="panel-heading"><span>HANDLING</span><span class="tiny-tag">CUSTOM</span></div>
+        <div class="slider-setting">
+          <div class="setting-top"><label for="dasSlider">DAS <small>delay</small></label><output id="dasOutput">120 ms</output></div>
+          <input id="dasSlider" type="range" min="0" max="300" step="5" value="120">
+          <div class="range-labels"><span>INSTANT</span><span>300 ms</span></div>
+        </div>
+        <div class="slider-setting">
+          <div class="setting-top"><label for="arrSlider">ARR <small>repeat</small></label><output id="arrOutput">20 ms</output></div>
+          <input id="arrSlider" type="range" min="0" max="100" step="1" value="20">
+          <div class="range-labels"><span>INSTANT</span><span>100 ms</span></div>
+        </div>
+        <div class="slider-setting">
+          <div class="setting-top"><label for="sdfSlider">SDF <small>soft drop</small></label><output id="sdfOutput">10×</output></div>
+          <input id="sdfSlider" type="range" min="1" max="21" step="1" value="10">
+          <div class="range-labels"><span>1×</span><span>∞ INSTANT</span></div>
+        </div>
+        <label class="toggle-row"><span>DAS cancellation <small>reset on direction change</small></span><input id="dasCancel" type="checkbox"><i></i></label>
+        <div class="handling-foot">SETTINGS SAVE AUTOMATICALLY</div>
+      </section>
+
+      <section class="panel queue-panel">
+        <div class="panel-heading"><span>NEXT</span><span class="tiny-tag">5 QUEUE</span></div>
+        <canvas id="nextCanvas" width="140" height="340" aria-label="Next five pieces"></canvas>
+      </section>
+    </aside>
+
+    <section class="center-column">
+      <div class="match-heading">
+        <div><span class="section-kicker">MATCH 001 / PRACTICE ROOM</span><h2>LAST STACKING</h2></div>
+        <div class="match-badges"><span class="mode-badge">3 BOT FREE-FOR-ALL</span><span class="round-badge">ROUND 01</span></div>
+      </div>
+      <div class="arena-row">
+        <div class="board-column">
+          <div class="board-topline"><span><i class="live-dot"></i> YOUR FIELD</span><span id="speedLabel">1.0× GRAVITY</span></div>
+          <div class="board-frame" id="boardFrame">
+            <canvas id="playerBoard" width="300" height="600" aria-label="Your 10 by 20 game board"></canvas>
+            <div class="board-scanline"></div>
+            <div class="start-overlay" id="startOverlay">
+              <div class="overlay-orbit">S+</div>
+              <p class="section-kicker">READY WHEN YOU ARE</p>
+              <h2>STACK<br><em>SMARTER.</em></h2>
+              <p class="overlay-copy">Outstack the bots. Build clean. Send the garbage back.</p>
+              <button class="primary-button" id="startButton">START MATCH <span>→</span></button>
+              <div class="overlay-foot">PRESS ENTER TO DEPLOY</div>
+            </div>
+            <div class="pause-overlay hidden" id="pauseOverlay"><span>PAUSED</span><small>PRESS P TO RESUME</small></div>
+          </div>
+          <div class="board-footer">
+            <div><span>ATTACK</span><strong id="attackValue">0</strong></div>
+            <div><span>APM</span><strong id="apmValue">0</strong></div>
+            <div><span>PIECES</span><strong id="piecesValue">0</strong></div>
+            <div class="battle-status"><i class="live-dot"></i><span id="battleStatus">WAITING FOR MATCH</span></div>
+          </div>
+        </div>
+        <div class="side-tools">
+          <section class="panel key-panel">
+            <div class="panel-heading"><span>KEYMAP</span><span class="tiny-tag">DEFAULT</span></div>
+            <div class="key-row"><span>MOVE</span><div><kbd>←</kbd><kbd>→</kbd></div></div>
+            <div class="key-row"><span>SOFT DROP</span><kbd>↓</kbd></div>
+            <div class="key-row"><span>HARD DROP</span><kbd class="wide-key">SPACE</kbd></div>
+            <div class="key-row"><span>ROTATE</span><div><kbd>Z</kbd><kbd>X</kbd></div></div>
+            <div class="key-row"><span>180°</span><kbd>A</kbd></div>
+            <div class="key-row"><span>HOLD</span><kbd>C</kbd></div>
+            <div class="key-row"><span>PAUSE</span><kbd>P</kbd></div>
+          </section>
+          <section class="panel info-panel">
+            <div class="panel-heading"><span>ROTATION</span><span class="tiny-tag accent-tag">SRS+</span></div>
+            <p>Guideline kicks for JLSTZ, symmetric SRS+ I-piece kicks, and dedicated 180° tests.</p>
+            <div class="rotation-chip"><span>LAST MOVE</span><strong id="lastMove">—</strong></div>
+            <div class="rotation-chip"><span>SPIN TYPE</span><strong id="spinValue">—</strong></div>
+          </section>
+        </div>
+      </div>
+      <div class="mobile-controls" aria-label="Touch controls">
+        <button data-touch="left">◀<small>LEFT</small></button>
+        <button data-touch="down">▼<small>DROP</small></button>
+        <button data-touch="right">▶<small>RIGHT</small></button>
+        <button data-touch="ccw">↶<small>CCW</small></button>
+        <button data-touch="cw">↻<small>CW</small></button>
+        <button data-touch="hard">⬇<small>HARD</small></button>
+        <button data-touch="hold">HOLD<small>C</small></button>
+        <button data-touch="180">180°<small>A</small></button>
+      </div>
+    </section>
+
+    <aside class="right-column">
+      <div class="opponents-heading"><div><span class="section-kicker">THE OTHER SIDE</span><h2>OPPONENTS <b>03</b></h2></div><span class="target-pill">ALL TARGETING YOU</span></div>
+      <div class="opponent-list" id="opponentList">
+        <article class="opponent-card" data-bot="0">
+          <div class="opponent-top"><div class="bot-avatar bot-cyan">01</div><div class="bot-name"><strong>PIXEL</strong><span>CASUAL / LV. 04</span></div><span class="bot-state" id="botState0">IDLE</span></div>
+          <div class="bot-field-row"><canvas id="botBoard0" width="100" height="200" aria-label="Pixel's field"></canvas><div class="bot-stats"><span>LINES <b id="botLines0">0</b></span><span>ATTACK <b id="botAttack0">0</b></span><span>INCOMING <b id="botIncoming0">0</b></span><div class="bot-health"><i id="botHealth0"></i></div><small>FIELD PRESSURE</small></div></div>
+        </article>
+        <article class="opponent-card" data-bot="1">
+          <div class="opponent-top"><div class="bot-avatar bot-violet">02</div><div class="bot-name"><strong>GLITCH</strong><span>STANDARD / LV. 12</span></div><span class="bot-state" id="botState1">IDLE</span></div>
+          <div class="bot-field-row"><canvas id="botBoard1" width="100" height="200" aria-label="Glitch's field"></canvas><div class="bot-stats"><span>LINES <b id="botLines1">0</b></span><span>ATTACK <b id="botAttack1">0</b></span><span>INCOMING <b id="botIncoming1">0</b></span><div class="bot-health"><i id="botHealth1"></i></div><small>FIELD PRESSURE</small></div></div>
+        </article>
+        <article class="opponent-card" data-bot="2">
+          <div class="opponent-top"><div class="bot-avatar bot-orange">03</div><div class="bot-name"><strong>OVERDRIVE</strong><span>EXPERT / LV. 26</span></div><span class="bot-state" id="botState2">IDLE</span></div>
+          <div class="bot-field-row"><canvas id="botBoard2" width="100" height="200" aria-label="Overdrive's field"></canvas><div class="bot-stats"><span>LINES <b id="botLines2">0</b></span><span>ATTACK <b id="botAttack2">0</b></span><span>INCOMING <b id="botIncoming2">0</b></span><div class="bot-health"><i id="botHealth2"></i></div><small>FIELD PRESSURE</small></div></div>
+        </article>
+      </div>
+      <section class="panel match-log">
+        <div class="panel-heading"><span>COMBAT LOG</span><span class="tiny-live">● FEED</span></div>
+        <div id="combatLog" class="log-lines"><p class="log-muted">Waiting for the first drop...</p></div>
+      </section>
+      <div class="disclaimer-line"><span>LOCAL AI MATCH</span><span>NO NETWORK REQUIRED</span></div>
+    </aside>
+  </main>
+
+  <footer class="site-footer"><span>STACK//LAB <b>BUILD 0.1.0</b></span><span>PLAY CLEAN. PLAY FAST.</span><span>MADE FOR THE STACKING COMMUNITY</span></footer>
+</body>
+</html>
