@@ -625,7 +625,15 @@
     return Math.max(45, 950 * Math.pow(0.82, Math.max(0, level - 1)));
   }
   function updatePlayer(dt) {
-    if (!player.alive) return;
+    if (!player.alive || ended) return;
+    runElapsed += dt;
+    if (currentMode === "blitz") {
+      blitzRemaining = Math.max(0, blitzRemaining - dt);
+      if (blitzRemaining <= 0) {
+        endMatch(true, "Two minutes are up. Final score: " + player.score.toLocaleString() + ".");
+        return;
+      }
+    }
     updateShift(dt);
     processSoftDrop(dt);
     if (softDropHeld()) {
@@ -729,6 +737,8 @@
     lockResets = 0;
     player.current.lastRotate = false;
     if (collides(player.board, player.current)) playerTopOut();
+    if (!ended && currentMode === "sprint" && player.lines >= 40) endMatch(true, "40 lines cleared in " + formatTime(runElapsed) + ".");
+    else if (!ended && currentMode === "cheese" && player.lines >= 100) endMatch(true, "100 lines cleared. You conquered the cheese stack.");
     updateUI();
   }
   function actionName(spin, lines, attack) {
