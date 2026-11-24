@@ -27,14 +27,14 @@
 
   // Kick offsets are in board coordinates: +x right, +y down.
   const JL = {
-    "0>1": [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
-    "1>0": [[0,0],[1,0],[1,-1],[0,2],[1,2]],
-    "1>2": [[0,0],[1,0],[1,-1],[0,2],[1,2]],
-    "2>1": [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
-    "2>3": [[0,0],[1,0],[1,1],[0,-2],[1,-2]],
-    "3>2": [[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
-    "3>0": [[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
-    "0>3": [[0,0],[1,0],[1,1],[0,-2],[1,-2]]
+    "0>1": [[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
+    "1>0": [[0,0],[1,0],[1,1],[0,-2],[1,-2]],
+    "1>2": [[0,0],[1,0],[1,1],[0,-2],[1,-2]],
+    "2>1": [[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
+    "2>3": [[0,0],[1,0],[1,-1],[0,2],[1,2]],
+    "3>2": [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
+    "3>0": [[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
+    "0>3": [[0,0],[1,0],[1,-1],[0,2],[1,2]]
   };
   // TETR.IO-style SRS+: the I-piece's five tests are mirrored and
   // symmetric across the vertical axis, rather than standard I-SRS.
@@ -456,8 +456,8 @@
     player.score += scoreFor(cleared, spin, player.level) + (cleared ? player.combo * 50 * player.level : 0);
     player.lines += cleared;
     player.level = 1 + Math.floor(player.lines / 10);
-    if (attack) sendPlayerAttack(attack);
-    cancelIncoming(player, attack);
+    const unblockedAttack = cancelIncoming(player, attack);
+    if (unblockedAttack) sendPlayerAttack(unblockedAttack);
     if (cleared) {
       lineFlash = 180;
       shake = Math.min(8, 2 + cleared * 1.4);
@@ -491,6 +491,7 @@
       state.incoming.shift();
       remaining--;
     }
+    return remaining;
   }
   function enqueueGarbage(target, amount) {
     if (!target.alive || amount <= 0) return;
@@ -564,7 +565,6 @@
         if (!mergePiece(trial, placed)) continue;
         const lines = clearLines(trial);
         const metrics = evaluateBoard(trial);
-        const wells = Math.max(0, 5 - metrics.heights?.[0] || 0);
         let value = -metrics.holes * 5.8 - metrics.aggregate * 0.49 - metrics.bump * 0.38 - metrics.maxHeight * 0.7 + lines * [0,2.1,5.0,8.5,15.2][lines];
         if (lines === 4) value += 3;
         if (rot === 0) value += 0.1;
@@ -592,8 +592,8 @@
     bot.lines += best.lines;
     bot.pieces++;
     bot.score += scoreFor(best.lines, spin, 1);
-    if (attack) sendBotAttack(bot, attack);
-    cancelIncoming(bot, attack);
+    const unblockedAttack = cancelIncoming(bot, attack);
+    if (unblockedAttack) sendBotAttack(bot, unblockedAttack);
     if (best.lines && Math.random() < 0.4) logEvent(bot.name + " cleared " + best.lines + " lines.", "muted");
     bot.current = takeNext(bot);
     if (collides(bot.board, bot.current)) bot.alive = false;
