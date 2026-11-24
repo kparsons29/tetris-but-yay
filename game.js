@@ -314,9 +314,11 @@
     if (state.queue.length < 7) state.queue.push(...emptyBag());
     return makePiece(state.queue.shift());
   }
-  function createBot(index, name, difficulty, pace) {
+  function createBot(index, name, difficulty, pace, level = 3) {
+    const tier = BOT_TIERS[level] || BOT_TIERS[3];
     const state = {
-      index, name, difficulty, pace, clock: 500 + Math.random() * 400,
+      index, name, difficulty, level, rank: tier.rank,
+      pace, clock: 650, noise: tier.noise, holeWeight: tier.holes, heightWeight: tier.height,
       board: makeBoard(), queue: newQueue(), current: null, combo: -1, b2b: 0,
       incoming: [], incomingClock: 1000, lines: 0, sent: 0, alive: true,
       pieces: 0, score: 0
@@ -324,16 +326,59 @@
     state.current = takeNext(state);
     return state;
   }
+  function showPage(pageId) {
+    currentPage = pageId;
+    document.querySelectorAll(".page").forEach((page) => page.classList.toggle("hidden", page.id !== pageId));
+    $("siteHeader").classList.toggle("game-header", pageId === "gamePage");
+    $("appRoot").dataset.page = pageId;
+    window.scrollTo(0, 0);
+  }
+  function formatTime(ms) {
+    const safe = Math.max(0, ms);
+    const minutes = Math.floor(safe / 60000);
+    const seconds = Math.floor((safe % 60000) / 1000);
+    const centiseconds = Math.floor((safe % 1000) / 10);
+    return String(minutes).padStart(2,"0") + ":" + String(seconds).padStart(2,"0") + "." + String(centiseconds).padStart(2,"0");
+  }
+  function updateModeScreen() {
+    document.querySelectorAll(".mode-card").forEach((card) => card.classList.toggle("selected", card.dataset.mode === selectedMode));
+    $("botLevelPicker").classList.toggle("hidden", selectedMode !== "botplay");
+    $("modeHint").textContent = selectedMode === "cheese" ? "100 lines · dig through garbage"
+      : selectedMode === "sprint" ? "40 lines · fastest time wins"
+      : selectedMode === "blitz" ? "2 minutes · highest score wins"
+      : "1v1 · " + BOT_TIERS[selectedBotLevel].rank + " ranked bot";
+    $("botLevelDescription").textContent = "LEVEL " + selectedBotLevel + " · " + BOT_TIERS[selectedBotLevel].rank + " RANK";
+    document.querySelectorAll("[data-bot-level]").forEach((button) =>
+      button.classList.toggle("selected", Number(button.dataset.botLevel) === selectedBotLevel));
+  }
+  function seedCheese(board) {
+    // A deliberately uneven stack of single-hole garbage for the dig challenge.
+    let previousHole = Math.floor(Math.random() * W);
+    for (let y = H - 10; y < H; y++) {
+      const row = Array(W).fill("G");
+      let hole = Math.floor(Math.random() * W);
+      if (Math.random() < 0.7) hole = Math.max(0, Math.min(W - 1, previousHole + (Math.random() < 0.5 ? -1 : 1)));
+      row[hole] = null;
+      if (Math.random() < 0.23) {
+        let second = Math.floor(Math.random() * W);
+        if (second === hole) second = (second + 4) % W;
+        row[second] = null;
+      }
+      board[y] = row;
+      previousHole = hole;
+    }
+  }
   function resetMatch(autostart) {
     player = createPlayer();
-    bots = [
-      createBot(0, "PIXEL", "CASUAL", 1320),
-      createBot(1, "GLITCH", "STANDARD", 920),
-      createBot(2, "OVERDRIVE", "EXPERT", 680)
-    ];
+    if (currentMode === "cheese") seedCheese(player.board);
+    bots = currentMode === "botplay"
+      ? [createBot(0, "STACK BOT", "LEVEL " + selectedBotLevel, BOT_TIERS[selectedBotLevel].pace, selectedBotLevel)]
+      : [];
     started = Boolean(autostart);
     paused = false;
     ended = false;
+    runElapsed = 0;
+    blitzRemaining = 120000;
     gravityClock = softClock = lockClock = 0;
     lockResets = 0;
     shift = { dir: 0, elapsed: 0, repeat: 0, instantDone: false };
@@ -343,47 +388,78 @@
     shake = 0;
     apmWindow = [];
     targetCursor = 0;
-    $("startOverlay").classList.toggle("hidden", started);
     $("pauseOverlay").classList.add("hidden");
-    $("startButton").innerHTML = "START MATCH <span>→</span>";
-    $("battleStatus").textContent = started ? "MATCH IN PROGRESS" : "WAITING FOR MATCH";
-    $("combatLog").innerHTML = '<p class="log-muted">Waiting for the first drop...</p>';
+    $("resultOverlay").classList.add("hidden");
+    $("battleStatus").textContent = started ? "RUN IN PROGRESS" : "READY";
+    $("gameModeTitle").textContent = MODE_INFO[currentMode].title;
+    $("gameModeKicker").textContent = currentMode === "botplay"
+      ? MODE_INFO.botplay.kicker + " / LEVEL " + selectedBotLevel + " · " + BOT_TIERS[selectedBotLevel].rank
+      : MODE_INFO[currentMode].kicker;
+    $("runObjective").textContent = MODE_INFO[currentMode].objective;
+    $("botInfo").classList.toggle("hidden", currentMode !== "botplay");
+    if (currentMode === "botplay" && bots[0]) {
+      $("botRankChip").textContent = "LV. " + selectedBotLevel;
+      $("botNameInGame").textContent = bots[0].name;
+      $("botRankInGame").textContent = bots[0].rank + " RANK";
+    }
+    if (autostart) showPage("gamePage");
     renderAll();
-    updateUI();
   }
-  function endMatch(won) {
+  function endMatch(won, reason = "") {
+    if (ended) return;
     ended = true;
     started = false;
     paused = false;
+    held.clear();
+    shift.dir = 0;
     $("pauseOverlay").classList.add("hidden");
-    $("startOverlay").classList.remove("hidden");
-    const overlay = $("startOverlay");
-    overlay.querySelector(".section-kicker").textContent = won ? "MATCH COMPLETE" : "FIELD LOST";
-    overlay.querySelector("h2").innerHTML = won ? "CLEAN<br><em>SWEEP.</em>" : "STACK<br><em>OVER.</em>";
-    overlay.querySelector(".overlay-copy").textContent = won
-      ? "Every opponent has topped out. Nice stacking."
-      : "Your field topped out. Adjust your handling and run it back.";
-    $("startButton").innerHTML = "PLAY AGAIN <span>→</span>";
-    $("battleStatus").textContent = won ? "VICTORY" : "DEFEAT";
-    logEvent(won ? "You cleared the arena." : "Your field topped out.", won ? "cyan" : "danger");
+    $("resultOverlay").classList.remove("hidden");
+    const title = currentMode === "blitz" ? (won ? "TIME'S UP." : "STACK OVER.")
+      : won ? (currentMode === "botplay" ? "BOT DEFEATED." : "RUN COMPLETE.") : "STACK OVER.";
+    $("resultKicker").textContent = won ? "CHALLENGE COMPLETE" : "RUN ENDED";
+    $("resultTitle").textContent = title;
+    const summary = currentMode === "sprint" ? "40 lines cleared in " + formatTime(runElapsed) + "."
+      : currentMode === "cheese" ? "You dug through " + player.lines + " lines of cheese."
+      : currentMode === "blitz" ? "The clock ran out. You scored " + player.score.toLocaleString() + " points."
+      : (won ? "You beat the level " + selectedBotLevel + " " + BOT_TIERS[selectedBotLevel].rank + " bot." : "The level " + selectedBotLevel + " bot won this round.");
+    $("resultSummary").textContent = reason || summary;
+    const results = [
+      ["SCORE", player.score.toLocaleString()],
+      ["LINES", player.lines],
+      ["TIME", formatTime(runElapsed)],
+      [currentMode === "botplay" ? "BOT LINES" : "PIECES", currentMode === "botplay" ? (bots[0]?.lines || 0) : player.pieces]
+    ];
+    $("resultStats").textContent = "";
+    for (const [label,value] of results) {
+      const cell = document.createElement("div");
+      const key = document.createElement("span"); key.textContent = label;
+      const val = document.createElement("b"); val.textContent = value;
+      cell.append(key,val); $("resultStats").append(cell);
+    }
+    renderAll();
   }
   function startMatch() {
     if (ended || !player || !player.alive) resetMatch(true);
     else {
       started = true;
       paused = false;
-      $("battleStatus").textContent = "MATCH IN PROGRESS";
+      showPage("gamePage");
+      $("battleStatus").textContent = "RUN IN PROGRESS";
     }
-    $("startOverlay").classList.add("hidden");
     $("pauseOverlay").classList.add("hidden");
+    $("resultOverlay").classList.add("hidden");
     renderAll();
   }
+  function beginSelectedMode() {
+    currentMode = selectedMode;
+    resetMatch(true);
+  }
   function togglePause() {
-    if (!started || ended) return;
+    if (!started || ended || currentPage !== "gamePage") return;
     paused = !paused;
     $("pauseOverlay").classList.toggle("hidden", !paused);
-    $("pauseButton").textContent = paused ? "▶" : "Ⅱ";
-    $("battleStatus").textContent = paused ? "PAUSED" : "MATCH IN PROGRESS";
+    $("battleStatus").textContent = paused ? "PAUSED" : "RUN IN PROGRESS";
+    if (paused) { held.clear(); shift.dir = 0; }
   }
 
   function rotatePlayer(dir) {
