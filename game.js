@@ -54,7 +54,8 @@
   const K180_I = [[0,0],[1,0],[-1,0],[2,0],[-2,0],[0,-1],[0,1],[1,-1],[-1,-1],[1,1],[-1,1]];
 
   const makeBoard = () => Array.from({ length: H }, () => Array(W).fill(null));
-  const emptyBag = () => {
+  // A true 7-bag: every shuffled batch contains each of the seven tetrominoes once.
+  const shuffledSevenBag = () => {
     const bag = TYPES.slice();
     for (let i = bag.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -62,7 +63,8 @@
     }
     return bag;
   };
-  const newQueue = () => emptyBag().concat(emptyBag());
+  // Keep two full bags queued so the five-piece preview never runs dry.
+  const newQueue = () => [...shuffledSevenBag(), ...shuffledSevenBag()];
   const makePiece = (type) => ({
     type, x: Math.floor((W - BASE[type].size) / 2), y: 0, rot: 0,
     lastRotate: false, kick: 0, lastAction: "spawn"
@@ -106,12 +108,18 @@
     return count;
   }
 
-  const defaultSettings = { das: 120, arr: 20, sdf: 10, dasCancel: false };
+  const defaultSettings = { das: 100, arr: 20, sdf: 10, dasCancel: false };
   let settings = { ...defaultSettings };
   try {
     const saved = JSON.parse(localStorage.getItem("stacklab-settings") || "{}");
     settings = { ...settings, ...saved };
-  } catch (_) { /* ignore malformed local settings */ }
+    // Migrate the previous 120 ms default once; preserve all other saved handling values.
+    if (localStorage.getItem("stacklab-latency-default-version") !== "2") {
+      if (settings.das === 120) settings.das = 100;
+      localStorage.setItem("stacklab-latency-default-version", "2");
+      localStorage.setItem("stacklab-settings", JSON.stringify(settings));
+    }
+  } catch (_) { /* ignore malformed or unavailable local settings */ }
 
   const defaultKeybinds = {
     left: "ArrowLeft", right: "ArrowRight", down: "ArrowDown",
@@ -269,15 +277,16 @@
   let selectedBotLevel = 3;
   let runElapsed = 0;
   let blitzRemaining = 120000;
-  let selectedStats = ["score", "lines", "time"];
+  let selectedStats = ["score", "lines", "time", "pps"];
   const STAT_INFO = {
     score: ["SCORE", () => player.score.toLocaleString()],
     lines: ["LINES", () => player.lines],
     time: ["TIME", () => formatTime(currentMode === "blitz" ? Math.max(0, blitzRemaining) : runElapsed)],
     level: ["LEVEL", () => player.level],
-    combo: ["COMBO", () => player.combo < 0 ? "—" : player.combo],
+    combo: ["COMBO", () => player.combo < 0 ? "—" : player.combo + 1],
     b2b: ["B2B", () => player.b2b ? "×" + player.b2b : "—"],
     pieces: ["PIECES", () => player.pieces],
+    pps: ["PPS", () => (player.pieces / Math.max(runElapsed / 1000, 0.001)).toFixed(2)],
     apm: ["APM", () => { const now = Date.now(); apmWindow = apmWindow.filter((time) => now - time < 60000); return apmWindow.length; }],
     attack: ["ATTACK", () => player.sent],
     incoming: ["INCOMING", () => player.incoming.length]
@@ -299,15 +308,21 @@
   try {
     const savedStats = JSON.parse(localStorage.getItem("stacklab-visible-stats") || "null");
     if (Array.isArray(savedStats)) selectedStats = savedStats.filter((key) => Object.prototype.hasOwnProperty.call({
-      score:1,lines:1,time:1,level:1,combo:1,b2b:1,pieces:1,apm:1,attack:1,incoming:1
+      score:1,lines:1,time:1,level:1,combo:1,b2b:1,pieces:1,pps:1,apm:1,attack:1,incoming:1
     }, key));
-  } catch (_) { /* use defaults */ }
+    // Add PPS once to existing saved HUD profiles, then respect later opt-outs.
+    if (localStorage.getItem("stacklab-visible-stats-version") !== "2") {
+      if (!selectedStats.includes("pps")) selectedStats.push("pps");
+      localStorage.setItem("stacklab-visible-stats-version", "2");
+    }
+  } catch (_) { /* use defaults when storage is unavailable */ }
   let lastFrame = 0, gravityClock = 0, softClock = 0, lockClock = 0, lockResets = 0;
   let shift = { dir: 0, elapsed: 0, repeat: 0, instantDone: false };
   let held = new Set();
   let particles = [];
   let lineFlash = 0;
   let shake = 0;
+  let clearPopupRemaining = 0;
   let lastUiAt = 0;
   let apmWindow = [];
   let targetCursor = 0;
@@ -324,7 +339,9 @@
     return p;
   }
   function takeNext(state) {
-    if (state.queue.length < 7) state.queue.push(...emptyBag());
+    // Never mix a partial bag with a replacement: refill only after all seven
+    // pieces from the previous bag have been dealt.
+    if (state.queue.length === 0) state.queue.push(...shuffledSevenBag());
     return makePiece(state.queue.shift());
   }
   function createBot(index, name, difficulty, pace, level = 3) {
@@ -334,7 +351,7 @@
       pace, clock: 650, noise: tier.noise, holeWeight: tier.holes, heightWeight: tier.height,
       board: makeBoard(), queue: newQueue(), current: null, combo: -1, b2b: 0,
       incoming: [], incomingClock: 1000, lines: 0, sent: 0, alive: true,
-      pieces: 0, score: 0
+      pieces: 0, score: 0, dirty: true
     };
     state.current = takeNext(state);
     return state;
@@ -400,6 +417,10 @@
     particles = [];
     lineFlash = 0;
     shake = 0;
+    clearPopupRemaining = 0;
+    $("clearPopup").classList.remove("visible");
+    $("clearPopup").textContent = "";
+    lastUiAt = 0;
     apmWindow = [];
     targetCursor = 0;
     $("pauseOverlay").classList.add("hidden");
@@ -417,7 +438,7 @@
       $("botRankInGame").textContent = bots[0].rank + " RANK";
     }
     if (autostart) showPage("gamePage");
-    renderAll();
+    renderAll(true);
   }
   function endMatch(won, reason = "") {
     if (ended) return;
@@ -730,6 +751,8 @@
     player.pieces++;
     player.holdUsed = false;
     player.spin = spin;
+    const clearLabel = clearLabelFor(cleared, spin);
+    if (clearLabel) showClearPopup(clearLabel);
     player.lastMove = spin !== "—" ? spin + (cleared ? " " + cleared + " LINE" + (cleared > 1 ? "S" : "") : "") : (cleared ? "LINE CLEAR ×" + cleared : "LOCK");
     const difficult = (spin !== "—" && cleared > 0) || cleared === 4;
     const b2bContinues = player.b2b > 0 && difficult;
@@ -760,7 +783,18 @@
     if (!ended && currentMode === "sprint" && player.lines >= 40) endMatch(true, "40 lines cleared in " + formatTime(runElapsed) + ".");
     else if (!ended && currentMode === "cheese" && player.lines >= 100) endMatch(true, "100 lines cleared. You conquered the cheese stack.");
     else if (collides(player.board, player.current)) playerTopOut();
-    updateUI();
+    updateUI(true);
+  }
+  function clearLabelFor(lines, spin) {
+    const lineLabels = ["", "SINGLE", "DOUBLE", "TRIPLE", "TETRIS"];
+    if (spin !== "—") return spin + (lines > 0 ? " " + (lineLabels[lines] || (lines + " LINES")) : "");
+    return lines > 0 ? (lineLabels[lines] || (lines + " LINES")) : "";
+  }
+  function showClearPopup(message) {
+    const popup = $("clearPopup");
+    popup.textContent = message;
+    popup.classList.add("visible");
+    clearPopupRemaining = 1350;
   }
   function actionName(spin, lines, attack) {
     let label = spin === "—" ? (lines === 4 ? "TETRIS" : lines + " LINE CLEAR") : spin + (lines ? " " + lines : "");
@@ -792,6 +826,7 @@
     const hole = state.incoming.shift();
     const removed = state.board.shift();
     state.board.push(Array.from({ length: W }, (_, x) => x === hole ? null : "G"));
+    state.dirty = true;
     if (removed.some(Boolean)) {
       if (isPlayer) playerTopOut();
       else state.alive = false;
@@ -910,6 +945,7 @@
     else if (best.lines > 0) bot.b2b = 0;
     const attack = attackFor(best.lines, spin, bot.combo, b2bContinues);
     bot.board = best.board;
+    bot.dirty = true;
     bot.lines += best.lines;
     bot.pieces++;
     bot.score += scoreFor(best.lines, spin, 1);
@@ -955,6 +991,10 @@
     });
     lineFlash = Math.max(0, lineFlash - dt);
     shake = Math.max(0, shake - dt * 0.025);
+    if (clearPopupRemaining > 0) {
+      clearPopupRemaining = Math.max(0, clearPopupRemaining - dt);
+      if (clearPopupRemaining === 0) $("clearPopup").classList.remove("visible");
+    }
     if (player) player.attackFlash = Math.max(0, player.attackFlash - dt);
   }
   function roundedRect(ctx, x, y, w, h, r) {
@@ -1047,8 +1087,13 @@
       ctx.fillRect(startX + x * cell + 2, startY + y * cell + 2, cell - 4, 1);
     }
   }
+  let previewCacheKey = null;
   function renderPreviews() {
-    drawPreview($("holdCanvas"), player && player.hold, 0, 17);
+    if (!player) return;
+    const key = (player.hold || "-") + "|" + player.queue.slice(0, 5).join("");
+    if (key === previewCacheKey) return;
+    previewCacheKey = key;
+    drawPreview($("holdCanvas"), player.hold, 0, 17);
     const canvas = $("nextCanvas");
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1099,19 +1144,29 @@
       if (data) pill.querySelector("strong").textContent = String(data[1]());
     }
   }
-  function renderAll() {
+  function renderAll(forceStats = false) {
     if (!player) return;
     const frame = $("boardFrame");
     if (frame) frame.style.transform = shake > 0
       ? "translate(" + ((Math.random() - .5) * shake) + "px," + ((Math.random() - .5) * shake) + "px)" : "";
     drawBoard($("playerBoard"), player.board, player.current, false);
-    if (bots.length) drawBoard($("botBoard0"), bots[0].board, null, true);
+    if (bots.length && bots[0].dirty) {
+      drawBoard($("botBoard0"), bots[0].board, null, true);
+      bots[0].dirty = false;
+    }
     renderPreviews();
-    updateUI();
+    updateUI(forceStats);
   }
-  function updateUI() {
+  function updateUI(forceStats = false) {
     if (!player) return;
-    renderRunStats();
+    const now = performance.now();
+    // Keep game rendering at refresh rate, but update secondary HUD text at 10 Hz.
+    if (forceStats || now - lastUiAt >= 100) {
+      renderRunStats();
+      lastUiAt = now;
+    }
+    $("comboCount").textContent = "×" + Math.max(0, player.combo + 1);
+    $("comboHud").classList.toggle("active", player.combo >= 0);
     $("holdHint").textContent = player.hold ? "READY TO SWAP" : "EMPTY";
     $("speedLabel").textContent = (950 / gravityInterval(player.level)).toFixed(1) + "× GRAVITY";
     $("pauseButton").innerHTML = paused ? "▶ <span>RESUME</span>" : "Ⅱ <span>PAUSE</span>";
