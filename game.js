@@ -1053,58 +1053,68 @@
       }
     }
   }
+  let renderedStatsKey = "";
+  function renderRunStats() {
+    const container = $("runStats");
+    const key = selectedStats.join("|");
+    if (container.dataset.statsKey !== key) {
+      container.textContent = "";
+      for (const stat of selectedStats) {
+        if (!STAT_INFO[stat]) continue;
+        const pill = document.createElement("div");
+        pill.className = "stat-pill";
+        pill.dataset.stat = stat;
+        const label = document.createElement("span");
+        label.textContent = STAT_INFO[stat][0];
+        const value = document.createElement("strong");
+        value.textContent = "—";
+        pill.append(label,value);
+        container.append(pill);
+      }
+      container.dataset.statsKey = key;
+    }
+    for (const pill of container.querySelectorAll("[data-stat]")) {
+      const data = STAT_INFO[pill.dataset.stat];
+      if (data) pill.querySelector("strong").textContent = String(data[1]());
+    }
+  }
   function renderAll() {
     if (!player) return;
     const frame = $("boardFrame");
-    frame.style.transform = shake > 0 ? "translate(" + ((Math.random() - .5) * shake) + "px," + ((Math.random() - .5) * shake) + "px)" : "";
+    if (frame) frame.style.transform = shake > 0
+      ? "translate(" + ((Math.random() - .5) * shake) + "px," + ((Math.random() - .5) * shake) + "px)" : "";
     drawBoard($("playerBoard"), player.board, player.current, false);
-    for (const bot of bots) drawBoard($("botBoard" + bot.index), bot.board, null, true);
+    if (bots.length) drawBoard($("botBoard0"), bots[0].board, null, true);
     renderPreviews();
     updateUI();
   }
   function updateUI() {
     if (!player) return;
-    $("scoreValue").textContent = player.score.toLocaleString();
-    $("linesValue").textContent = player.lines;
-    $("levelValue").textContent = player.level;
-    $("comboValue").textContent = player.combo < 0 ? "—" : player.combo;
-    $("b2bValue").textContent = player.b2b ? "×" + player.b2b : "—";
-    $("incomingValue").textContent = player.incoming.length;
-    $("incomingBar").style.width = Math.min(100, player.incoming.length * 10) + "%";
-    $("incomingNote").textContent = player.incoming.length ? "GARBAGE INCOMING  ·  " + player.incoming.length + " LINES" : "NO INCOMING ATTACKS";
-    $("attackValue").textContent = player.sent;
-    $("piecesValue").textContent = player.pieces;
-    const now = Date.now();
-    apmWindow = apmWindow.filter((time) => now - time < 60000);
-    $("apmValue").textContent = apmWindow.length;
-    $("holdHint").textContent = player.hold ? "READY TO SWAP" : "EMPTY — TAP C TO HOLD";
+    renderRunStats();
+    $("holdHint").textContent = player.hold ? "READY TO SWAP" : "EMPTY";
     $("lastMove").textContent = player.lastMove;
     $("spinValue").textContent = player.spin;
     $("speedLabel").textContent = (950 / gravityInterval(player.level)).toFixed(1) + "× GRAVITY";
-    $("pauseButton").textContent = paused ? "▶" : "Ⅱ";
-    for (const bot of bots) {
-      const i = bot.index;
-      $("botLines" + i).textContent = bot.lines;
-      $("botAttack" + i).textContent = bot.sent;
-      $("botIncoming" + i).textContent = bot.incoming.length;
-      $("botHealth" + i).style.width = Math.max(0, 100 - evaluateBoard(bot.board).maxHeight * 5) + "%";
-      $("botState" + i).textContent = !bot.alive ? "OUT" : (started ? "ACTIVE" : "IDLE");
-      $("botState" + i).classList.toggle("active", bot.alive && started);
-      $("botState" + i).classList.toggle("out", !bot.alive);
-      const card = document.querySelector('.opponent-card[data-bot="' + i + '"]');
-      card.classList.toggle("dead", !bot.alive);
-      card.classList.toggle("targeted", bot.alive && bot.incoming.length > 0);
+    $("pauseButton").innerHTML = paused ? "▶ <span>RESUME</span>" : "Ⅱ <span>PAUSE</span>";
+    $("battleStatus").textContent = ended ? "RUN COMPLETE" : paused ? "PAUSED" : started ? "RUN IN PROGRESS" : "READY";
+    if (currentMode === "sprint") $("runObjective").textContent = "CLEAR " + Math.max(0, 40 - player.lines) + " MORE LINES";
+    else if (currentMode === "cheese") $("runObjective").textContent = "DIG " + Math.max(0, 100 - player.lines) + " MORE LINES";
+    else if (currentMode === "blitz") $("runObjective").textContent = "TIME LEFT · " + formatTime(blitzRemaining);
+    else $("runObjective").textContent = bots[0]?.alive ? "OUTSTACK THE " + (bots[0]?.rank || "BOT") + " BOT" : "OPPONENT TOPPED OUT";
+    if (bots.length) {
+      const bot = bots[0];
+      $("botLines0").textContent = bot.lines;
+      $("botAttack0").textContent = bot.sent;
+      $("botState0").textContent = !bot.alive ? "TOPPED OUT" : started ? "ACTIVE" : "READY";
+      $("botRankChip").textContent = "LV. " + selectedBotLevel;
+      $("botRankInGame").textContent = bot.rank + " RANK";
     }
   }
   function logEvent(message, tone) {
-    const log = $("combatLog");
-    const p = document.createElement("p");
-    if (tone === "cyan") p.style.color = "#69dfd3";
-    if (tone === "danger") p.style.color = "#ff829b";
-    if (tone === "muted") p.style.color = "#8497b1";
-    p.textContent = "› " + message;
-    log.prepend(p);
-    while (log.children.length > 6) log.removeChild(log.lastChild);
+    // The playfield stays deliberately uncluttered; keep the latest event
+    // in the status line rather than adding a combat feed to the game screen.
+    const status = $("battleStatus");
+    if (status && started && !paused) status.textContent = message.toUpperCase();
   }
 
   function loop(timestamp) {
