@@ -199,9 +199,10 @@
     else {
       started = true;
       paused = false;
-      $("startOverlay").classList.add("hidden");
       $("battleStatus").textContent = "MATCH IN PROGRESS";
     }
+    $("startOverlay").classList.add("hidden");
+    $("pauseOverlay").classList.add("hidden");
     renderAll();
   }
   function togglePause() {
@@ -278,10 +279,14 @@
   function beginShift(dir) {
     if (!started || paused) return;
     held.add(dir < 0 ? "left" : "right");
+    const previousDir = shift.dir;
+    const carriedCharge = previousDir !== 0 && previousDir !== dir && !settings.dasCancel;
     shift.dir = dir;
-    shift.elapsed = 0;
-    shift.repeat = 0;
-    shift.instantDone = false;
+    if (!carriedCharge) {
+      shift.elapsed = 0;
+      shift.repeat = 0;
+      shift.instantDone = false;
+    }
     movePlayer(dir);
   }
   function endShift(dir) {
@@ -374,17 +379,16 @@
     if (!player.alive) return;
     updateShift(dt);
     processSoftDrop(dt);
-    if (softDropHeld() && settings.sdf >= 21) {
-      // Infinite SDF replaces normal gravity while the down key is held.
+    if (softDropHeld()) {
+      // Soft-drop timing above fully replaces gravity while held.
+      // At SDF = infinity the piece has already sonic-dropped to the ghost.
+      gravityClock = 0;
     } else {
       gravityClock += dt;
       const interval = gravityInterval(player.level);
       while (gravityClock >= interval) {
         gravityClock -= interval;
-        if (!collides(player.board, player.current, player.current.x, player.current.y + 1)) {
-          player.current.y++;
-          if (softDropHeld()) player.score++;
-        }
+        if (!collides(player.board, player.current, player.current.x, player.current.y + 1)) player.current.y++;
       }
     }
     if (collides(player.board, player.current, player.current.x, player.current.y + 1)) {
