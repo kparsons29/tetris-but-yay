@@ -132,10 +132,6 @@
             <canvas id="holdCanvas" width="120" height="84" aria-label="Held piece"></canvas>
             <p class="widget-hint" id="holdHint">EMPTY</p>
           </section>
-          <div class="clear-hud" aria-live="polite">
-            <div class="clear-popup" id="clearPopup" role="status"></div>
-            <div class="combo-counter" id="comboHud"><span>COMBO</span><strong id="comboCount">×0</strong></div>
-          </div>
           <section class="play-widget bot-info hidden" id="botInfo">
             <div class="widget-heading"><span>OPPONENT</span><span class="bot-rank-chip" id="botRankChip">LV. 3</span></div>
             <strong id="botNameInGame">STACK BOT</strong>
@@ -150,6 +146,8 @@
           <div class="board-frame" id="boardFrame">
             <canvas id="playerBoard" width="300" height="600" aria-label="Your 10 by 20 game board"></canvas>
             <div class="board-scanline"></div>
+            <div class="board-float-popup attack-popup" id="attackPopup" aria-hidden="true"></div>
+            <div class="board-float-popup cancel-popup" id="cancelPopup" aria-hidden="true"></div>
             <div class="pause-overlay hidden" id="pauseOverlay"><div class="pause-card"><span class="section-kicker">RUN PAUSED</span><h2>TAKE A BREATHER.</h2><p>Your run is saved while paused.</p><button class="primary-button" id="resumeButton">RESUME <span>→</span></button><button class="secondary-button full-button" id="pauseRestartButton">RESTART RUN</button><button class="text-button" id="pauseMenuButton">BACK TO MENU</button></div></div>
             <div class="pause-overlay hidden" id="resultOverlay"><div class="pause-card"><span class="section-kicker" id="resultKicker">RUN COMPLETE</span><h2 id="resultTitle">NICE RUN.</h2><p id="resultSummary">Your result will appear here.</p><div class="result-stats" id="resultStats"></div><button class="primary-button" id="retryGame">PLAY AGAIN <span>→</span></button><button class="secondary-button full-button" id="resultMenuButton">BACK TO MENU</button></div></div>
           </div>
@@ -162,6 +160,10 @@
         </section>
         <aside class="play-side next-side">
           <section class="play-widget next-widget"><div class="widget-heading"><span>NEXT</span><span class="tiny-tag">5 QUEUE</span></div><canvas id="nextCanvas" width="140" height="340" aria-label="Next five pieces"></canvas></section>
+          <div class="clear-hud" aria-live="polite">
+            <div class="clear-popup" id="clearPopup" role="status"></div>
+            <div class="combo-counter" id="comboHud"><span>COMBO</span><strong id="comboCount">×0</strong></div>
+          </div>
           <div class="run-stats" id="runStats"></div>
         </aside>
       </div>

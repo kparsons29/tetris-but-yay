@@ -323,6 +323,8 @@
   let lineFlash = 0;
   let shake = 0;
   let clearPopupRemaining = 0;
+  let attackPopupRemaining = 0;
+  let cancelPopupRemaining = 0;
   let lastUiAt = 0;
   let apmWindow = [];
   let targetCursor = 0;
@@ -418,8 +420,12 @@
     lineFlash = 0;
     shake = 0;
     clearPopupRemaining = 0;
+    attackPopupRemaining = 0;
+    cancelPopupRemaining = 0;
     $("clearPopup").classList.remove("visible");
     $("clearPopup").textContent = "";
+    $("attackPopup").classList.remove("visible");
+    $("cancelPopup").classList.remove("visible");
     lastUiAt = 0;
     apmWindow = [];
     targetCursor = 0;
@@ -718,18 +724,26 @@
     const frontCount = Number(corners[front[0]]) + Number(corners[front[1]]);
     return frontCount === 2 || piece.kick === 4 ? "T-SPIN" : "MINI T-SPIN";
   }
-  function attackFor(lines, spin, combo, b2bContinues) {
+  // Non-T immobile spins use TETR.IO-style All-Spin behaviour:
+  // they keep the normal clear attack value, but qualify as difficult clears.
+  function classifySpin(piece, board) {
+    if (piece.type === "T") return classifyTSpin(piece, board);
+    if (!piece.lastRotate) return "—";
+    const canMove = !collides(board, piece, piece.x - 1, piece.y, piece.rot)
+      || !collides(board, piece, piece.x + 1, piece.y, piece.rot)
+      || !collides(board, piece, piece.x, piece.y + 1, piece.rot);
+    return canMove ? "—" : "ALL-SPIN";
+  }
+  // Tetris 99-style base garbage and combo bonuses.
+  // Combo 0 is the first consecutive line clear; combo 1 is the second.
+  const COMBO_ATTACK = [0,1,1,2,2,3,3,4,4,4,5];
+  function attackFor(lines, spin, combo, b2bBonus) {
     let base = [0,0,1,2,4][lines] || 0;
-    if (spin === "T-SPIN") base = [0,2,4,6][lines] || 0;
-    if (spin === "MINI T-SPIN") base = [0,1,2,0,0][lines] || 0;
-    let attack = base;
-    if (combo >= 1) {
-      attack = base > 0
-        ? Math.floor(base * (1 + 0.25 * combo))
-        : Math.floor(Math.log1p(1.25 * combo));
-    }
-    if (base > 0 && b2bContinues) attack += 1;
-    return Math.max(0, attack);
+    if (spin === "T-SPIN") base = [0,2,4,6,0][lines] || 0;
+    if (spin === "MINI T-SPIN") base = [0,0,1,0,0][lines] || 0;
+    // ALL-SPIN deliberately keeps the normal line-clear value.
+    const comboBonus = combo >= 0 ? COMBO_ATTACK[Math.min(combo, 10)] : 0;
+    return Math.max(0, base + comboBonus + b2bBonus);
   }
   function scoreFor(lines, spin, level) {
     const normal = [0,100,300,500,800][lines] || 0;
@@ -742,7 +756,7 @@
   function lockPlayer() {
     if (!player.alive) return;
     const piece = clonePiece(player.current);
-    const spin = classifyTSpin(piece, player.board);
+    const spin = classifySpin(piece, player.board);
     if (!mergePiece(player.board, piece)) {
       playerTopOut();
       return;
@@ -755,16 +769,21 @@
     if (clearLabel) showClearPopup(clearLabel);
     player.lastMove = spin !== "—" ? spin + (cleared ? " " + cleared + " LINE" + (cleared > 1 ? "S" : "") : "") : (cleared ? "LINE CLEAR ×" + cleared : "LOCK");
     const difficult = (spin !== "—" && cleared > 0) || cleared === 4;
-    const b2bContinues = player.b2b > 0 && difficult;
+    const b2bBonus = difficult ? player.b2b : 0;
     if (cleared > 0) player.combo++;
     else player.combo = -1;
     if (difficult) player.b2b++;
     else if (cleared > 0) player.b2b = 0;
-    const attack = attackFor(cleared, spin, player.combo, b2bContinues);
+    const attack = attackFor(cleared, spin, player.combo, b2bBonus);
     player.score += scoreFor(cleared, spin, player.level) + (cleared ? player.combo * 50 * player.level : 0);
     player.lines += cleared;
     player.level = 1 + Math.floor(player.lines / 10);
     const unblockedAttack = cancelIncoming(player, attack);
+    const cancelledAttack = player.lastCancelled || 0;
+    if (cleared > 0) {
+      if (unblockedAttack > 0 || cancelledAttack === 0) showBoardPopup("attack", unblockedAttack);
+      if (cancelledAttack > 0) showBoardPopup("cancel", cancelledAttack);
+    }
     if (unblockedAttack) sendPlayerAttack(unblockedAttack);
     if (cleared) {
       lineFlash = 180;
@@ -794,7 +813,17 @@
     const popup = $("clearPopup");
     popup.textContent = message;
     popup.classList.add("visible");
-    clearPopupRemaining = 1350;
+    clearPopupRemaining = 2000;
+  }
+  function showBoardPopup(kind, amount) {
+    const popup = $(kind === "cancel" ? "cancelPopup" : "attackPopup");
+    popup.textContent = kind === "cancel" ? "−" + amount : String(amount);
+    popup.style.left = (18 + Math.random() * 64).toFixed(1) + "%";
+    popup.style.top = (64 + Math.random() * 23).toFixed(1) + "%";
+    popup.classList.remove("visible");
+    popup.classList.add("visible");
+    if (kind === "cancel") cancelPopupRemaining = 2000;
+    else attackPopupRemaining = 2000;
   }
   function actionName(spin, lines, attack) {
     let label = spin === "—" ? (lines === 4 ? "TETRIS" : lines + " LINE CLEAR") : spin + (lines ? " " + lines : "");
@@ -812,6 +841,7 @@
       state.incoming.shift();
       remaining--;
     }
+    state.lastCancelled = amount - remaining;
     return remaining;
   }
   function enqueueGarbage(target, amount) {
@@ -938,12 +968,13 @@
     const best = bestBotPlacement(bot);
     if (!best) { bot.alive = false; return; }
     const spin = "—";
-    const b2bContinues = bot.b2b > 0 && best.lines === 4;
+    const difficult = best.lines === 4;
+    const b2bBonus = difficult ? bot.b2b : 0;
     if (best.lines > 0) bot.combo++;
     else bot.combo = -1;
-    if (best.lines === 4) bot.b2b++;
+    if (difficult) bot.b2b++;
     else if (best.lines > 0) bot.b2b = 0;
-    const attack = attackFor(best.lines, spin, bot.combo, b2bContinues);
+    const attack = attackFor(best.lines, spin, bot.combo, b2bBonus);
     bot.board = best.board;
     bot.dirty = true;
     bot.lines += best.lines;
@@ -994,6 +1025,14 @@
     if (clearPopupRemaining > 0) {
       clearPopupRemaining = Math.max(0, clearPopupRemaining - dt);
       if (clearPopupRemaining === 0) $("clearPopup").classList.remove("visible");
+    }
+    if (attackPopupRemaining > 0) {
+      attackPopupRemaining = Math.max(0, attackPopupRemaining - dt);
+      if (attackPopupRemaining === 0) $("attackPopup").classList.remove("visible");
+    }
+    if (cancelPopupRemaining > 0) {
+      cancelPopupRemaining = Math.max(0, cancelPopupRemaining - dt);
+      if (cancelPopupRemaining === 0) $("cancelPopup").classList.remove("visible");
     }
     if (player) player.attackFlash = Math.max(0, player.attackFlash - dt);
   }

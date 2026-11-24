@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Oxanium:wght@400;500;600;700;800&display=swap');
 
 :root {
   color-scheme: dark;
@@ -6,8 +6,8 @@
   --line:rgba(153,177,211,.14); --line2:rgba(153,177,211,.25);
   --text:#edf4ff; --muted:#8798b1; --faint:#5a6b83;
   --cyan:#4fe1d1; --violet:#a48bff; --orange:#ffad73; --danger:#ff718e;
-  --mono:'DM Mono','SFMono-Regular',Consolas,monospace;
-  --sans:'Space Grotesk',Inter,system-ui,sans-serif;
+  --mono:'IBM Plex Mono','SFMono-Regular',Consolas,monospace;
+  --sans:'Oxanium','Arial Narrow',system-ui,sans-serif;
 }
 *{box-sizing:border-box}
 html{min-width:320px;background:var(--bg)}
@@ -305,4 +305,37 @@ kbd{min-width:22px;height:21px;padding:0 5px;display:inline-grid;place-items:cen
   .in-game .run-status{padding:4px 1px}
   .in-game .next-widget #nextCanvas{max-height:34vh}
   .in-game .stat-pill{padding:5px}
+}
+
+
+/* STACK//LAB arcade typography and clearer attack feedback. */
+.in-game .widget-heading{font-size:11px;letter-spacing:.12em}
+.in-game .widget-hint{font-size:9px}
+.in-game .field-topline{font-size:11px}
+.in-game .run-status{font-size:10px}
+.in-game .stat-pill span{font-size:9px}
+.in-game .stat-pill strong{font-size:14px}
+.in-game .bot-info>strong{font-size:13px}
+.in-game .bot-info>span:not(.bot-rank-chip):not(.bot-state){font-size:10px}
+.clear-hud{gap:7px}
+.clear-popup{min-height:58px;padding:10px 7px;font:800 16px var(--sans);letter-spacing:.06em;color:#f4f8ff;text-shadow:0 2px 12px rgba(0,0,0,.55)}
+.clear-popup.visible{border-color:rgba(79,225,209,.38);background:linear-gradient(135deg,rgba(79,225,209,.16),rgba(164,139,255,.12))}
+.combo-counter span{font-size:10px}
+.combo-counter strong{font:700 17px var(--mono)}
+.board-float-popup{position:absolute;z-index:4;pointer-events:none;min-width:58px;padding:7px 12px;border-radius:7px;text-align:center;font:800 32px/1 var(--sans);letter-spacing:-.04em;font-variant-numeric:tabular-nums;opacity:0;transform:translate(-50%,10px) scale(.86);transition:opacity .18s ease,transform .18s cubic-bezier(.2,.8,.2,1);box-shadow:0 8px 26px rgba(0,0,0,.42);text-shadow:0 2px 5px rgba(0,0,0,.3)}
+.board-float-popup::after{display:block;margin-top:4px;font:700 8px var(--mono);letter-spacing:.14em;content:"LINES"}
+.board-float-popup.visible{opacity:1;transform:translate(-50%,0) scale(1)}
+.attack-popup{color:#fff;background:rgba(5,8,13,.9);border:1px solid rgba(255,255,255,.25)}
+.cancel-popup{color:#a9d8ff;background:rgba(18,72,132,.92);border:1px solid rgba(112,184,255,.65);text-shadow:0 0 12px rgba(80,164,255,.5)}
+@media(max-width:560px){
+  .in-game .widget-heading{font-size:9px}
+  .in-game .widget-hint{font-size:8px}
+  .in-game .field-topline{font-size:8px}
+  .in-game .run-status{font-size:8px}
+  .in-game .stat-pill span{font-size:7px}
+  .in-game .stat-pill strong{font-size:11px}
+  .clear-popup{min-height:42px;font-size:11px;padding:6px 3px}
+  .combo-counter span{font-size:7px}
+  .combo-counter strong{font-size:12px}
+  .board-float-popup{font-size:25px;padding:6px 9px;min-width:48px}
 }
