@@ -129,14 +129,14 @@
         </div>
         <div class="side-tools">
           <section class="panel key-panel">
-            <div class="panel-heading"><span>KEYMAP</span><span class="tiny-tag">DEFAULT</span></div>
-            <div class="key-row"><span>MOVE</span><div><kbd>←</kbd><kbd>→</kbd></div></div>
-            <div class="key-row"><span>SOFT DROP</span><kbd>↓</kbd></div>
-            <div class="key-row"><span>HARD DROP</span><kbd class="wide-key">SPACE</kbd></div>
-            <div class="key-row"><span>ROTATE</span><div><kbd>Z</kbd><kbd>X</kbd></div></div>
-            <div class="key-row"><span>180°</span><kbd>A</kbd></div>
-            <div class="key-row"><span>HOLD</span><kbd>C</kbd></div>
-            <div class="key-row"><span>PAUSE</span><kbd>P</kbd></div>
+            <div class="panel-heading"><span>KEYMAP</span><button class="edit-keybinds" id="editKeybinds" type="button">EDIT ↗</button></div>
+            <div class="key-row"><span>MOVE</span><div><kbd id="display-left">←</kbd><kbd id="display-right">→</kbd></div></div>
+            <div class="key-row"><span>SOFT DROP</span><kbd id="display-down">↓</kbd></div>
+            <div class="key-row"><span>HARD DROP</span><kbd class="wide-key" id="display-hardDrop">SPACE</kbd></div>
+            <div class="key-row"><span>ROTATE</span><div><kbd id="display-rotateCCW">Z</kbd><kbd id="display-rotateCW">X</kbd></div></div>
+            <div class="key-row"><span>180°</span><kbd id="display-rotate180">A</kbd></div>
+            <div class="key-row"><span>HOLD</span><kbd id="display-hold">C</kbd></div>
+            <div class="key-row"><span>PAUSE</span><kbd id="display-pause">P</kbd></div>
           </section>
           <section class="panel info-panel">
             <div class="panel-heading"><span>ROTATION</span><span class="tiny-tag accent-tag">SRS+</span></div>
@@ -183,5 +183,19 @@
   </main>
 
   <footer class="site-footer"><span>STACK//LAB <b>BUILD 0.1.0</b></span><span>PLAY CLEAN. PLAY FAST.</span><span>MADE FOR THE STACKING COMMUNITY</span></footer>
+  <div class="keybind-backdrop hidden" id="keybindModal">
+    <section class="keybind-dialog" role="dialog" aria-modal="true" aria-labelledby="keybindTitle">
+      <div class="keybind-dialog-head">
+        <div><span class="section-kicker">CONTROL CONFIGURATION</span><h2 id="keybindTitle">CUSTOM KEYBINDS</h2></div>
+        <button class="icon-button" id="closeKeybinds" type="button" aria-label="Close keybind settings">×</button>
+      </div>
+      <p class="keybind-intro">Select any action, then press the key you want to use. If that key is already assigned, the two bindings will swap.</p>
+      <div class="keybind-grid" id="keybindRows"></div>
+      <div class="keybind-dialog-foot">
+        <span id="keybindStatus" role="status">Changes save automatically on this device.</span>
+        <div><button class="secondary-button" id="resetKeybinds" type="button">RESET DEFAULTS</button><button class="primary-button compact-button" id="doneKeybinds" type="button">DONE</button></div>
+      </div>
+    </section>
+  </div>
 </body>
 </html>
