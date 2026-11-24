@@ -113,6 +113,139 @@
     settings = { ...settings, ...saved };
   } catch (_) { /* ignore malformed local settings */ }
 
+  const defaultKeybinds = {
+    left: "ArrowLeft", right: "ArrowRight", down: "ArrowDown",
+    hardDrop: "Space", rotateCCW: "KeyZ", rotateCW: "KeyX",
+    rotate180: "KeyA", hold: "KeyC", pause: "KeyP",
+    restart: "KeyR", start: "Enter"
+  };
+  const keybindActions = [
+    ["left", "Move left"], ["right", "Move right"], ["down", "Soft drop"],
+    ["hardDrop", "Hard drop"], ["rotateCCW", "Rotate counter-clockwise"],
+    ["rotateCW", "Rotate clockwise"], ["rotate180", "Rotate 180°"],
+    ["hold", "Hold piece"], ["pause", "Pause / resume"],
+    ["restart", "Restart match"], ["start", "Start / play again"]
+  ];
+  let keybinds = { ...defaultKeybinds };
+  let captureAction = null;
+  try {
+    const saved = JSON.parse(localStorage.getItem("stacklab-keybinds") || "{}");
+    const used = new Set();
+    for (const action of Object.keys(defaultKeybinds)) {
+      const value = saved[action];
+      if (typeof value === "string" && isBindableCode(value) && !used.has(value)) {
+        keybinds[action] = value;
+        used.add(value);
+      }
+    }
+  } catch (_) { /* ignore malformed saved bindings */ }
+
+  function isBindableCode(code) {
+    if (["Space","Enter","ArrowLeft","ArrowRight","ArrowUp","ArrowDown",
+      "Home","End","PageUp","PageDown","Insert","NumpadEnter",
+      "NumpadAdd","NumpadSubtract","NumpadMultiply","NumpadDivide","NumpadDecimal"].includes(code)) return true;
+    return /^(Key[A-Z]|Digit[0-9]|Numpad[0-9])$/.test(code) ||
+      /^(Backquote|Minus|Equal|BracketLeft|BracketRight|Backslash|Semicolon|Quote|Comma|Period|Slash)$/.test(code);
+  }
+  function keyLabel(code) {
+    const labels = {
+      ArrowLeft: "←", ArrowRight: "→", ArrowUp: "↑", ArrowDown: "↓",
+      Space: "SPACE", Enter: "ENTER", Home: "HOME", End: "END",
+      PageUp: "PG UP", PageDown: "PG DN", Insert: "INSERT",
+      NumpadEnter: "NUM ENTER", NumpadAdd: "NUM +", NumpadSubtract: "NUM −",
+      NumpadMultiply: "NUM *", NumpadDivide: "NUM /", NumpadDecimal: "NUM .",
+      Backquote: "`", Minus: "−", Equal: "=", BracketLeft: "[",
+      BracketRight: "]", Backslash: "\\", Semicolon: ";", Quote: "'",
+      Comma: ",", Period: ".", Slash: "/"
+    };
+    if (labels[code]) return labels[code];
+    if (code.startsWith("Key")) return code.slice(3);
+    if (code.startsWith("Digit")) return code.slice(5);
+    if (code.startsWith("Numpad") && /^Numpad[0-9]$/.test(code)) return "NUM " + code.slice(6);
+    return code.toUpperCase();
+  }
+  function saveKeybinds() {
+    try { localStorage.setItem("stacklab-keybinds", JSON.stringify(keybinds)); } catch (_) {}
+    renderKeybinds();
+  }
+  function renderKeybinds() {
+    const rows = $("keybindRows");
+    if (rows) {
+      rows.textContent = "";
+      for (const [action, label] of keybindActions) {
+        const item = document.createElement("div");
+        item.className = "keybind-item";
+        const name = document.createElement("span");
+        name.textContent = label;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "keybind-button" + (captureAction === action ? " capturing" : "");
+        button.dataset.bindAction = action;
+        button.textContent = captureAction === action ? "PRESS A KEY…" : keyLabel(keybinds[action]);
+        button.setAttribute("aria-label", "Change " + label + " key, currently " + keyLabel(keybinds[action]));
+        button.addEventListener("click", () => beginKeyCapture(action));
+        item.append(name, button);
+        rows.append(item);
+      }
+    }
+    const displayIds = {
+      left: "display-left", right: "display-right", down: "display-down",
+      hardDrop: "display-hardDrop", rotateCCW: "display-rotateCCW",
+      rotateCW: "display-rotateCW", rotate180: "display-rotate180",
+      hold: "display-hold", pause: "display-pause"
+    };
+    for (const [action, id] of Object.entries(displayIds)) {
+      const el = $(id);
+      if (el) el.textContent = keyLabel(keybinds[action]);
+    }
+  }
+  function clearHeldControls() {
+    held.clear();
+    shift.dir = 0;
+    shift.elapsed = 0;
+    shift.repeat = 0;
+    shift.instantDone = false;
+  }
+  function beginKeyCapture(action) {
+    captureAction = action;
+    clearHeldControls();
+    $("keybindStatus").textContent = "Press a key for " + keybindActions.find(([id]) => id === action)[1] + ". Escape cancels.";
+    renderKeybinds();
+  }
+  function closeKeybindEditor() {
+    captureAction = null;
+    clearHeldControls();
+    $("keybindModal").classList.add("hidden");
+  }
+  function assignCapturedKey(code) {
+    if (!captureAction) return;
+    if (!isBindableCode(code)) {
+      $("keybindStatus").textContent = "That key cannot be assigned. Try a letter, number, arrow, or Space.";
+      return;
+    }
+    const action = captureAction;
+    const previous = keybinds[action];
+    const conflict = Object.keys(keybinds).find((name) => name !== action && keybinds[name] === code);
+    keybinds[action] = code;
+    if (conflict) keybinds[conflict] = previous;
+    captureAction = null;
+    saveKeybinds();
+    const actionLabel = keybindActions.find(([id]) => id === action)[1];
+    const message = conflict
+      ? "Swapped " + actionLabel + " with " + keybindActions.find(([id]) => id === conflict)[1] + "."
+      : actionLabel + " set to " + keyLabel(code) + ".";
+    $("keybindStatus").textContent = message + " Changes save automatically.";
+  }
+  function openKeybindEditor() {
+    captureAction = null;
+    clearHeldControls();
+    $("keybindStatus").textContent = "Select an action, then press the key you want to use.";
+    $("keybindModal").classList.remove("hidden");
+    renderKeybinds();
+    const first = $("keybindRows").querySelector("button");
+    if (first) first.focus();
+  }
+
   let player = null;
   let bots = [];
   let started = false, paused = false, ended = false;
@@ -865,33 +998,69 @@
   $("startButton").addEventListener("click", startMatch);
   $("pauseButton").addEventListener("click", togglePause);
   $("restartButton").addEventListener("click", () => resetMatch(true));
+  $("editKeybinds").addEventListener("click", openKeybindEditor);
+  $("closeKeybinds").addEventListener("click", closeKeybindEditor);
+  $("doneKeybinds").addEventListener("click", closeKeybindEditor);
+  $("keybindModal").addEventListener("click", (event) => {
+    if (event.target === $("keybindModal")) closeKeybindEditor();
+  });
+  $("resetKeybinds").addEventListener("click", () => {
+    keybinds = { ...defaultKeybinds };
+    captureAction = null;
+    saveKeybinds();
+    $("keybindStatus").textContent = "Default keybinds restored.";
+  });
 
   function isTypingTarget(target) {
     return target && (["INPUT","SELECT","TEXTAREA"].includes(target.tagName) || target.isContentEditable);
   }
+  function actionForKey(code) {
+    return Object.keys(keybinds).find((action) => keybinds[action] === code) || null;
+  }
   window.addEventListener("keydown", (event) => {
+    if (captureAction) {
+      event.preventDefault();
+      if (event.code === "Escape") {
+        const action = captureAction;
+        captureAction = null;
+        $("keybindStatus").textContent = "Binding cancelled.";
+        renderKeybinds();
+      } else if (event.code === "Tab" || event.code.startsWith("Shift") ||
+                 event.code.startsWith("Control") || event.code.startsWith("Alt") ||
+                 event.code.startsWith("Meta") || event.code === "CapsLock") {
+        return;
+      } else {
+        assignCapturedKey(event.code);
+      }
+      return;
+    }
+    const modalOpen = !$("keybindModal").classList.contains("hidden");
+    if (modalOpen) {
+      if (event.code === "Escape") closeKeybindEditor();
+      return;
+    }
     if (isTypingTarget(event.target)) return;
-    const code = event.code;
-    const keys = ["ArrowLeft","ArrowRight","ArrowDown","Space","KeyZ","KeyX","KeyA","KeyC","KeyP","KeyR","Enter"];
-    if (keys.includes(code)) event.preventDefault();
-    if (event.repeat && ["Space","KeyZ","KeyX","KeyA","KeyC","KeyP","KeyR","Enter"].includes(code)) return;
-    if (code === "Enter" && !started) { startMatch(); return; }
-    if (code === "KeyP") { togglePause(); return; }
-    if (code === "KeyR") { resetMatch(true); return; }
+    const action = actionForKey(event.code);
+    if (action) event.preventDefault();
+    if (!action) return;
+    if (event.repeat && !["left","right","down"].includes(action)) return;
+    if (action === "start" && !started) { startMatch(); return; }
+    if (action === "pause") { togglePause(); return; }
+    if (action === "restart") { resetMatch(true); return; }
     if (!started || paused) return;
-    if (code === "ArrowLeft" && !event.repeat) beginShift(-1);
-    else if (code === "ArrowRight" && !event.repeat) beginShift(1);
-    else if (code === "ArrowDown") held.add("down");
-    else if (code === "Space") hardDrop();
-    else if (code === "KeyZ") rotatePlayer(-1);
-    else if (code === "KeyX" || code === "ArrowUp") rotatePlayer(1);
-    else if (code === "KeyA") rotatePlayer(2);
-    else if (code === "KeyC") holdPiece();
+    if (action === "left" && !event.repeat) beginShift(-1);
+    else if (action === "right" && !event.repeat) beginShift(1);
+    else if (action === "down") held.add("down");
+    else if (action === "hardDrop") hardDrop();
+    else if (action === "rotateCCW") rotatePlayer(-1);
+    else if (action === "rotateCW") rotatePlayer(1);
+    else if (action === "rotate180") rotatePlayer(2);
+    else if (action === "hold") holdPiece();
   });
   window.addEventListener("keyup", (event) => {
-    if (event.code === "ArrowLeft") endShift(-1);
-    if (event.code === "ArrowRight") endShift(1);
-    if (event.code === "ArrowDown") held.delete("down");
+    if (event.code === keybinds.left) endShift(-1);
+    if (event.code === keybinds.right) endShift(1);
+    if (event.code === keybinds.down) held.delete("down");
   });
   window.addEventListener("blur", () => {
     held.clear();
@@ -925,6 +1094,7 @@
   });
 
   updateSliderUI();
+  renderKeybinds();
   resetMatch(false);
   requestAnimationFrame(loop);
 })();
