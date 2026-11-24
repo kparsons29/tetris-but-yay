@@ -339,3 +339,58 @@ kbd{min-width:22px;height:21px;padding:0 5px;display:inline-grid;place-items:cen
   .combo-counter strong{font-size:12px}
   .board-float-popup{font-size:25px;padding:6px 9px;min-width:48px}
 }
+
+
+/* Rank-versus layout: player stack on the left, full-size opponent on the right. */
+.botplay-layout{
+  grid-template-columns:minmax(110px,145px) minmax(250px,340px) minmax(110px,145px) minmax(250px,340px);
+  gap:14px;
+  align-items:start;
+}
+.botplay-layout .hold-side{grid-column:1;grid-row:1}
+.botplay-layout .field-column{grid-column:2;grid-row:1}
+.botplay-layout .next-side{grid-column:3;grid-row:1}
+.botplay-layout .opponent-side{grid-column:4;grid-row:1;min-width:0}
+.opponent-side{min-width:0}
+.opponent-side .bot-info{display:flex;flex-direction:column;gap:8px}
+#botBoard0{display:block;width:100%;height:auto;aspect-ratio:1/2;margin:0;background:#080e19;border:1px solid var(--line);image-rendering:pixelated}
+.bot-stats{display:flex;flex-wrap:wrap;gap:6px}
+.bot-stats .stat-pill{min-width:65px;padding:7px 8px}
+.bot-stats .stat-pill strong{font-size:11px}
+.board-objective{
+  position:absolute;z-index:2;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:100%;text-align:center;pointer-events:none;opacity:0;transition:opacity .18s ease;
+  color:rgba(225,240,255,.22);font:800 clamp(40px,7vw,76px)/1 var(--sans);
+  letter-spacing:-.04em;text-shadow:0 3px 18px rgba(0,0,0,.3);font-variant-numeric:tabular-nums;
+}
+.board-objective.visible{opacity:1}
+.board-objective::after{display:block;margin-top:9px;content:attr(data-label);font:700 10px var(--mono);letter-spacing:.22em;color:rgba(225,240,255,.22)}
+#skinPreview{display:block;width:100%;max-width:180px;height:auto;margin:12px 0 0;border:1px solid var(--line);border-radius:6px;background:rgba(7,13,24,.85)}
+.skin-select{margin-top:17px}
+@media(max-width:1150px) and (min-width:761px){
+  .botplay-layout{grid-template-columns:110px minmax(220px,1fr) 110px minmax(220px,1fr);gap:9px}
+}
+@media(max-width:760px){
+  .in-game .botplay-layout{
+    grid-template-columns:minmax(56px,17vw) minmax(0,1fr) minmax(68px,20vw);
+    gap:5px;align-items:start;
+  }
+  .in-game .botplay-layout .hold-side{grid-column:1;grid-row:1}
+  .in-game .botplay-layout .field-column{grid-column:2;grid-row:1}
+  .in-game .botplay-layout .next-side{grid-column:1;grid-row:2}
+  .in-game .botplay-layout .opponent-side{grid-column:3;grid-row:1 / span 2}
+  .in-game .botplay-layout #botBoard0{width:100%;height:auto}
+  .in-game .botplay-layout .bot-stats{display:grid;grid-template-columns:1fr;gap:3px}
+  .in-game .botplay-layout .bot-stats .stat-pill{min-width:0;padding:4px 5px}
+  .in-game .botplay-layout .bot-stats .stat-pill span{font-size:6px}
+  .in-game .botplay-layout .bot-stats .stat-pill strong{font-size:8px}
+  .in-game .botplay-layout .bot-info{padding:6px 4px;gap:4px}
+  .in-game .botplay-layout .bot-info>strong{font-size:7px;overflow-wrap:anywhere}
+  .in-game .botplay-layout .bot-info>span{font-size:6px}
+  .in-game .board-objective{font-size:clamp(28px,9vw,52px)}
+}
+@media(max-width:560px){
+  .in-game .botplay-layout .widget-heading{font-size:6px;letter-spacing:.03em}
+  .in-game .botplay-layout .bot-rank-chip{font-size:6px;padding:2px}
+  .in-game .botplay-layout .bot-state{font-size:6px}
+}

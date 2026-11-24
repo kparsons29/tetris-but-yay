@@ -120,6 +120,11 @@
       localStorage.setItem("stacklab-settings", JSON.stringify(settings));
     }
   } catch (_) { /* ignore malformed or unavailable local settings */ }
+  let pieceSkin = "classic";
+  try {
+    const savedSkin = localStorage.getItem("stacklab-piece-skin");
+    if (["classic","flat","glass","neon"].includes(savedSkin)) pieceSkin = savedSkin;
+  } catch (_) {}
 
   const defaultKeybinds = {
     left: "ArrowLeft", right: "ArrowRight", down: "ArrowDown",
@@ -297,13 +302,15 @@
     blitz: { title: "2 MIN BLITZ", kicker: "SINGLEPLAYER / 2 MIN BLITZ", objective: "SCORE AS MUCH AS POSSIBLE IN 2 MINUTES" },
     botplay: { title: "BOTPLAY", kicker: "SINGLEPLAYER / BOTPLAY", objective: "TOP OUT YOUR 1V1 OPPONENT" }
   };
+  // TETR.IO Tetra League rank averages (23 Aug 2026); paired tiers are blended.
+  // PPS controls piece cadence; APM and APP shape each bot's attack preference.
   const BOT_TIERS = [
     null,
-    { rank: "D–D+", pace: 1550, noise: 4.8, holes: 4.5, height: 0.45 },
-    { rank: "C−–C", pace: 1250, noise: 3.2, holes: 5.0, height: 0.55 },
-    { rank: "LOW B", pace: 930, noise: 1.8, holes: 5.8, height: 0.66 },
-    { rank: "A", pace: 640, noise: 0.75, holes: 6.2, height: 0.78 },
-    { rank: "S+", pace: 430, noise: 0.08, holes: 6.8, height: 0.95 }
+    { rank: "D–D+", pps: 0.745, apm: 8.1, app: 0.18, pace: 60000/0.745, noise: 5.2, holes: 7.8, height: 0.42, attackWeight: 1.0 },
+    { rank: "C−–C", pps: 0.855, apm: 11.85, app: 0.23, pace: 60000/0.855, noise: 3.5, holes: 8.8, height: 0.52, attackWeight: 1.15 },
+    { rank: "LOW B", pps: 1.06, apm: 19.1, app: 0.30, pace: 60000/1.06, noise: 1.8, holes: 10.2, height: 0.64, attackWeight: 1.35 },
+    { rank: "A", pps: 1.27, apm: 28.4, app: 0.37, pace: 60000/1.27, noise: 0.65, holes: 12.0, height: 0.78, attackWeight: 1.65 },
+    { rank: "S+", pps: 1.75, apm: 56.4, app: 0.54, pace: 60000/1.75, noise: 0.08, holes: 14.5, height: 0.92, attackWeight: 2.1 }
   ];
   try {
     const savedStats = JSON.parse(localStorage.getItem("stacklab-visible-stats") || "null");
@@ -350,10 +357,11 @@
     const tier = BOT_TIERS[level] || BOT_TIERS[3];
     const state = {
       index, name, difficulty, level, rank: tier.rank,
-      pace, clock: 650, noise: tier.noise, holeWeight: tier.holes, heightWeight: tier.height,
-      board: makeBoard(), queue: newQueue(), current: null, combo: -1, b2b: 0,
+      pace: tier.pace, clock: 0, noise: tier.noise, holeWeight: tier.holes, heightWeight: tier.height,
+      targetPPS: tier.pps, targetAPM: tier.apm, targetAPP: tier.app, attackWeight: tier.attackWeight,
+      board: makeBoard(), queue: newQueue(), current: null, combo: -1, b2b: 0, levelScore: 1,
       incoming: [], incomingClock: 1000, lines: 0, sent: 0, alive: true,
-      pieces: 0, score: 0, dirty: true
+      pieces: 0, score: 0, dirty: true, lastGarbageHole: null
     };
     state.current = takeNext(state);
     return state;
@@ -392,11 +400,6 @@
       let hole = Math.floor(Math.random() * W);
       if (Math.random() < 0.7) hole = Math.max(0, Math.min(W - 1, previousHole + (Math.random() < 0.5 ? -1 : 1)));
       row[hole] = null;
-      if (Math.random() < 0.23) {
-        let second = Math.floor(Math.random() * W);
-        if (second === hole) second = (second + 4) % W;
-        row[second] = null;
-      }
       board[y] = row;
       previousHole = hole;
     }
@@ -438,12 +441,16 @@
       : MODE_INFO[currentMode].kicker;
     $("runObjective").textContent = MODE_INFO[currentMode].objective;
     $("botInfo").classList.toggle("hidden", currentMode !== "botplay");
+    $("opponentSide").classList.toggle("hidden",currentMode !== "botplay");
+    $("playLayout").classList.toggle("botplay-layout",currentMode === "botplay");
+    $("boardObjective").classList.toggle("visible",currentMode !== "botplay");
     if (currentMode === "botplay" && bots[0]) {
       $("botRankChip").textContent = "LV. " + selectedBotLevel;
       $("botNameInGame").textContent = bots[0].name;
       $("botRankInGame").textContent = bots[0].rank + " RANK";
     }
     if (autostart) showPage("gamePage");
+    renderSkinPreview();
     renderAll(true);
   }
   function endMatch(won, reason = "") {
@@ -745,13 +752,16 @@
     const comboBonus = combo >= 0 ? COMBO_ATTACK[Math.min(combo, 10)] : 0;
     return Math.max(0, base + comboBonus + b2bBonus);
   }
-  function scoreFor(lines, spin, level) {
+  function scoreFor(lines, spin, level, b2b = false, allClear = false) {
     const normal = [0,100,300,500,800][lines] || 0;
-    const full = [400,800,1200,1600][lines] || 0;
-    const mini = [100,200,400][lines] || 0;
-    if (spin === "T-SPIN") return (full || 400) * level;
-    if (spin === "MINI T-SPIN") return (mini || 100) * level;
-    return normal * level;
+    const full = [400,800,1200,1600,2600][lines] || 0;
+    const mini = [100,200,400,800,1600][lines] || 0;
+    let points = normal;
+    if (spin === "T-SPIN") points = full || 400;
+    else if (spin === "MINI T-SPIN" || spin === "ALL-SPIN") points = mini || 100;
+    if (b2b && lines > 0) points *= 1.5;
+    if (allClear) points += 3500;
+    return Math.floor(points * level);
   }
   function lockPlayer() {
     if (!player.alive) return;
@@ -769,15 +779,19 @@
     if (clearLabel) showClearPopup(clearLabel);
     player.lastMove = spin !== "—" ? spin + (cleared ? " " + cleared + " LINE" + (cleared > 1 ? "S" : "") : "") : (cleared ? "LINE CLEAR ×" + cleared : "LOCK");
     const difficult = (spin !== "—" && cleared > 0) || cleared === 4;
+    const wasB2B = difficult && player.b2b > 0;
     const b2bBonus = difficult ? player.b2b : 0;
     if (cleared > 0) player.combo++;
     else player.combo = -1;
     if (difficult) player.b2b++;
     else if (cleared > 0) player.b2b = 0;
     const attack = attackFor(cleared, spin, player.combo, b2bBonus);
-    player.score += scoreFor(cleared, spin, player.level) + (cleared ? player.combo * 50 * player.level : 0);
+    const nextLevel = 1 + Math.floor((player.lines + cleared) / 10);
+    const allClear = cleared > 0 && player.board.every((row) => row.every((cell) => !cell));
+    player.score += scoreFor(cleared, spin, nextLevel, wasB2B, allClear)
+      + (cleared ? player.combo * 50 * nextLevel : 0);
     player.lines += cleared;
-    player.level = 1 + Math.floor(player.lines / 10);
+    player.level = nextLevel;
     const unblockedAttack = cancelIncoming(player, attack);
     const cancelledAttack = player.lastCancelled || 0;
     if (cleared > 0) {
@@ -846,7 +860,14 @@
   }
   function enqueueGarbage(target, amount) {
     if (!target.alive || amount <= 0) return;
-    for (let i = 0; i < amount; i++) target.incoming.push(Math.floor(Math.random() * W));
+    let hole = Math.floor(Math.random() * W);
+    if (Number.isInteger(target.lastGarbageHole)) {
+      while (hole === target.lastGarbageHole) hole = Math.floor(Math.random() * W);
+    }
+    target.lastGarbageHole = hole;
+    // One attack is one packet: all of its rows share one well.
+    // A separate attack receives a different well.
+    for (let i = 0; i < amount; i++) target.incoming.push(hole);
     if (target.incomingClock < 500) target.incomingClock = 650;
   }
   function processGarbage(state, dt, isPlayer) {
@@ -889,29 +910,44 @@
 
   function evaluateBoard(board) {
     const heights = [];
-    let holes = 0, aggregate = 0, bump = 0;
+    let holes = 0, aggregate = 0, bump = 0, rowTransitions = 0, coveredHoleDepth = 0;
     for (let x = 0; x < W; x++) {
-      let height = 0, seen = false;
+      let height = 0, seen = false, columnHoles = 0;
       for (let y = 0; y < H; y++) {
         if (board[y][x]) {
           if (!seen) { height = H - y; seen = true; }
-        } else if (seen) holes++;
+        } else if (seen) { holes++; columnHoles++; coveredHoleDepth += columnHoles; }
       }
       heights.push(height);
       aggregate += height;
     }
     for (let x = 0; x < W - 1; x++) bump += Math.abs(heights[x] - heights[x + 1]);
-    const maxHeight = Math.max(...heights);
-    return { holes, aggregate, bump, maxHeight };
+    for (let y = 0; y < H; y++) {
+      let previous = true;
+      for (let x = 0; x < W; x++) {
+        const occupied = Boolean(board[y][x]);
+        if (occupied !== previous) rowTransitions++;
+        previous = occupied;
+      }
+      if (!previous) rowTransitions++;
+    }
+    let wells = 0;
+    for (let x = 0; x < W; x++) {
+      const left = x === 0 ? H : heights[x - 1];
+      const right = x === W - 1 ? H : heights[x + 1];
+      wells += Math.max(0, Math.min(left,right) - heights[x]);
+    }
+    return { holes, aggregate, bump, maxHeight: Math.max(...heights), rowTransitions, coveredHoleDepth, wells };
   }
   function botBoardValue(board, bot) {
-    const metrics = evaluateBoard(board);
-    const clearBonus = 0;
-    return -metrics.holes * bot.holeWeight
-      - metrics.aggregate * 0.43
-      - metrics.bump * 0.34
-      - metrics.maxHeight * bot.heightWeight
-      + clearBonus;
+    const m = evaluateBoard(board);
+    return -m.holes * bot.holeWeight
+      -m.coveredHoleDepth * (bot.holeWeight * 0.38)
+      -m.aggregate * 0.34
+      -m.bump * 0.28
+      -m.rowTransitions * 0.16
+      -m.maxHeight * bot.heightWeight
+      -m.wells * 0.32;
   }
   function enumerateBotPlacements(board, type) {
     const piece = makePiece(type);
@@ -928,38 +964,56 @@
         const trial = cloneBoard(board);
         if (!mergePiece(trial, { ...piece, x, y, rot })) continue;
         const lines = clearLines(trial);
-        candidates.push({ board: trial, lines, x, y, rot });
+        const rotated = { ...piece, x, y, rot, lastRotate: rot !== 0, kick: 0 };
+        const spin = classifySpin(rotated, board);
+        candidates.push({ board: trial, lines, x, y, rot, spin, drop: Math.max(0,y-piece.y) });
       }
     }
     return candidates;
   }
+  function botPlacementValue(candidate, bot, combo = bot.combo, b2b = bot.b2b) {
+    const difficult = (candidate.spin !== "—" && candidate.lines > 0) || candidate.lines === 4;
+    const nextCombo = candidate.lines > 0 ? combo + 1 : -1;
+    const attack = attackFor(candidate.lines,candidate.spin || "—",nextCombo,difficult ? b2b : 0);
+    const clearValue = [0,1.5,5.5,10.5,17][candidate.lines] || 0;
+    const spinValue = candidate.spin === "T-SPIN" ? 8 :
+      candidate.spin === "MINI T-SPIN" || candidate.spin === "ALL-SPIN" ? 2.5 : 0;
+    const allClear = candidate.lines > 0 && candidate.board.every((row) => row.every((cell) => !cell));
+    const currentAPM = bot.sent / Math.max(runElapsed / 60000,0.1);
+    const apmPressure = Math.max(0.75,Math.min(2.4,bot.targetAPM / Math.max(1,currentAPM)));
+    const attackWeight = bot.attackWeight * apmPressure * (1 + bot.targetAPP);
+    return botBoardValue(candidate.board,bot) + clearValue + spinValue
+      + attack * attackWeight * 3.1 + (allClear ? 35 : 0) - candidate.drop * 0.012;
+  }
   function bestBotPlacement(bot) {
-    const placements = enumerateBotPlacements(bot.board, bot.current.type);
-    let best = null, bestValue = -Infinity;
+    const placements = enumerateBotPlacements(bot.board,bot.current.type);
+    if (!placements.length) return null;
     const tier = BOT_TIERS[bot.level] || BOT_TIERS[3];
-    for (const candidate of placements) {
-      let value = botBoardValue(candidate.board, bot);
-      value += candidate.lines * [0,2.1,5.0,8.5,15.2][candidate.lines];
-      if (candidate.lines === 4) value += 3.5;
-      if (candidate.rot === 0) value += 0.08;
-      // The highest tier plans one additional piece ahead instead of only
-      // taking the locally best landing spot.
-      if (bot.level >= 5 && bot.queue.length) {
-        const nextCandidates = enumerateBotPlacements(candidate.board, bot.queue[0]);
-        let lookahead = -Infinity;
-        for (const next of nextCandidates) {
-          let nextValue = botBoardValue(next.board, bot);
-          nextValue += next.lines * [0,2.1,5.0,8.5,15.2][next.lines];
-          if (next.lines === 4) nextValue += 3.5;
-          if (nextValue > lookahead) lookahead = nextValue;
+    const width = bot.level >= 5 ? 12 : bot.level >= 4 ? 9 : bot.level >= 3 ? 7 : 5;
+    const ranked = placements.map((p) => ({p,value:botPlacementValue(p,bot)}))
+      .sort((a,b) => b.value-a.value).slice(0,width);
+    let best = ranked[0].p, bestValue = -Infinity;
+    for (const first of ranked) {
+      let value = first.value;
+      const nextType = bot.queue[0];
+      if (nextType) {
+        const next = enumerateBotPlacements(first.p.board,nextType);
+        let nextBest = -Infinity;
+        for (const second of next) {
+          const nextB2B = ((first.p.spin !== "—" && first.p.lines > 0) || first.p.lines === 4) ? bot.b2b + 1 : bot.b2b;
+          let secondValue = botPlacementValue(second,bot,first.p.lines > 0 ? bot.combo + 1 : -1,nextB2B);
+          if (bot.level >= 5 && bot.queue[1]) {
+            const third = enumerateBotPlacements(second.board,bot.queue[1]);
+            let thirdBest = -Infinity;
+            for (const option of third) thirdBest = Math.max(thirdBest,botPlacementValue(option,bot));
+            if (Number.isFinite(thirdBest)) secondValue += thirdBest * 0.22;
+          }
+          if (secondValue > nextBest) nextBest = secondValue;
         }
-        if (Number.isFinite(lookahead)) value += lookahead * 0.58;
+        if (Number.isFinite(nextBest)) value += nextBest * (bot.level >= 4 ? 0.78 : 0.58);
       }
       value += (Math.random() - 0.5) * tier.noise;
-      if (value > bestValue) {
-        bestValue = value;
-        best = candidate;
-      }
+      if (value > bestValue) { bestValue = value; best = first.p; }
     }
     return best;
   }
@@ -967,8 +1021,9 @@
     if (!bot.alive) return;
     const best = bestBotPlacement(bot);
     if (!best) { bot.alive = false; return; }
-    const spin = "—";
-    const difficult = best.lines === 4;
+    const spin = best.spin || "—";
+    const difficult = (spin !== "—" && best.lines > 0) || best.lines === 4;
+    const wasB2B = difficult && bot.b2b > 0;
     const b2bBonus = difficult ? bot.b2b : 0;
     if (best.lines > 0) bot.combo++;
     else bot.combo = -1;
@@ -978,8 +1033,12 @@
     bot.board = best.board;
     bot.dirty = true;
     bot.lines += best.lines;
+    bot.levelScore = 1 + Math.floor(bot.lines / 10);
     bot.pieces++;
-    bot.score += scoreFor(best.lines, spin, 1);
+    const allClear = best.lines > 0 && best.board.every((row) => row.every((cell) => !cell));
+    bot.score += scoreFor(best.lines, spin, bot.levelScore, wasB2B, allClear)
+      + (best.lines ? bot.combo * 50 * bot.levelScore : 0)
+      + Math.max(0,best.drop || 0) * 2;
     const unblockedAttack = cancelIncoming(bot, attack);
     if (unblockedAttack) sendBotAttack(bot, unblockedAttack);
     if (best.lines && Math.random() < 0.4) logEvent(bot.name + " cleared " + best.lines + " lines.", "muted");
@@ -1040,29 +1099,44 @@
     ctx.beginPath();
     ctx.roundRect(x, y, w, h, r);
   }
-  function drawCell(ctx, x, y, color, size, alpha = 1, ghost = false) {
-    const px = x * size, py = y * size;
+  function drawSkinBlock(ctx,px,py,size,color) {
     ctx.save();
-    ctx.globalAlpha = alpha;
-    if (ghost) {
-      ctx.fillStyle = color;
-      ctx.globalAlpha = .13;
-      ctx.fillRect(px + 2, py + 2, size - 4, size - 4);
-      ctx.globalAlpha = .72 * alpha;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1.3;
-      ctx.strokeRect(px + 2.5, py + 2.5, size - 5, size - 5);
+    const skin = color === COLORS.G ? "classic" : pieceSkin;
+    const x=px+1.3,y=py+1.3,w=size-2.6,h=size-2.6;
+    if (skin === "flat") {
+      ctx.fillStyle=color; ctx.fillRect(x,y,w,h);
+      ctx.strokeStyle="rgba(4,10,18,.24)"; ctx.lineWidth=1;
+      ctx.strokeRect(x+.5,y+.5,w-1,h-1);
+    } else if (skin === "glass") {
+      ctx.fillStyle=color; ctx.globalAlpha=.78; ctx.fillRect(x,y,w,h);
+      ctx.globalAlpha=.9; ctx.fillStyle="rgba(255,255,255,.25)";
+      ctx.fillRect(x+1,y+1,w-2,Math.max(2,size*.22));
+      ctx.strokeStyle="rgba(235,248,255,.62)"; ctx.lineWidth=1;
+      ctx.strokeRect(x+.5,y+.5,w-1,h-1);
+    } else if (skin === "neon") {
+      ctx.fillStyle="rgba(7,14,27,.94)"; ctx.fillRect(x,y,w,h);
+      ctx.shadowColor=color; ctx.shadowBlur=Math.max(4,size*.24);
+      ctx.strokeStyle=color; ctx.lineWidth=Math.max(1.4,size*.09);
+      ctx.strokeRect(x+1,y+1,w-2,h-2); ctx.shadowBlur=0;
+      ctx.fillStyle=color; ctx.globalAlpha=.22; ctx.fillRect(x+3,y+3,w-6,h-6); ctx.globalAlpha=1;
     } else {
-      ctx.fillStyle = color;
-      ctx.fillRect(px + 1.3, py + 1.3, size - 2.6, size - 2.6);
-      ctx.fillStyle = "rgba(255,255,255,.12)";
-      ctx.fillRect(px + 2, py + 2, size - 4, 1.3);
-      ctx.fillStyle = "rgba(0,0,0,.13)";
-      ctx.fillRect(px + 2, py + size - 3.2, size - 4, 1.2);
+      ctx.fillStyle=color; ctx.fillRect(x,y,w,h);
+      ctx.fillStyle="rgba(255,255,255,.12)"; ctx.fillRect(px+2,py+2,size-4,1.3);
+      ctx.fillStyle="rgba(0,0,0,.13)"; ctx.fillRect(px+2,py+size-3.2,size-4,1.2);
     }
     ctx.restore();
   }
-  function drawBoard(canvas, board, active, small = false) {
+  function drawCell(ctx,x,y,color,size,alpha=1,ghost=false) {
+    const px=x*size,py=y*size;
+    ctx.save(); ctx.globalAlpha=alpha;
+    if (ghost) {
+      ctx.fillStyle=color; ctx.globalAlpha=.13; ctx.fillRect(px+2,py+2,size-4,size-4);
+      ctx.globalAlpha=.72*alpha; ctx.strokeStyle=color; ctx.lineWidth=1.3;
+      ctx.strokeRect(px+2.5,py+2.5,size-5,size-5);
+    } else drawSkinBlock(ctx,px,py,size,color);
+    ctx.restore();
+  }
+  function drawBoard(canvas, board, active, small = false, effects = true) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const cw = canvas.width, ch = canvas.height, size = cw / W;
@@ -1089,7 +1163,7 @@
       for (const [x,y] of cellsOf(active, active.x, gy, active.rot)) if (y >= 0) drawCell(ctx, x, y, COLORS[active.type], size, .85, true);
       for (const [x,y] of cellsOf(active, active.x, active.y, active.rot)) if (y >= 0) drawCell(ctx, x, y, COLORS[active.type], size, 1, false);
     }
-    if (!small && particles.length) {
+    if (!small && effects && particles.length) {
       for (const p of particles) {
         ctx.globalAlpha = Math.max(0, p.life / p.max);
         ctx.fillStyle = p.color;
@@ -1097,11 +1171,11 @@
       }
       ctx.globalAlpha = 1;
     }
-    if (!small && lineFlash > 0) {
+    if (!small && effects && lineFlash > 0) {
       ctx.fillStyle = "rgba(218,255,255," + (lineFlash / 180 * .13) + ")";
       ctx.fillRect(0, 0, cw, ch);
     }
-    if (!small && player && player.attackFlash > 0) {
+    if (!small && effects && player && player.attackFlash > 0) {
       ctx.strokeStyle = "rgba(255,112,141," + player.attackFlash / 500 + ")";
       ctx.lineWidth = 6;
       ctx.strokeRect(3, 3, cw - 6, ch - 6);
@@ -1120,16 +1194,23 @@
     const startX = Math.floor((w - pieceW) / 2) - minX * cell;
     const startY = yOffset + Math.floor((Math.min(h, 52) - pieceH) / 2) - minY * cell;
     for (const [x,y] of shape) {
-      ctx.fillStyle = COLORS[type];
-      ctx.fillRect(startX + x * cell + 1, startY + y * cell + 1, cell - 2, cell - 2);
-      ctx.fillStyle = "rgba(255,255,255,.12)";
-      ctx.fillRect(startX + x * cell + 2, startY + y * cell + 2, cell - 4, 1);
+      drawSkinBlock(ctx,startX+x*cell,startY+y*cell,cell,COLORS[type]);
     }
   }
   let previewCacheKey = null;
+  function renderSkinPreview() {
+    const canvas=$("skinPreview");
+    if(!canvas) return;
+    const ctx=canvas.getContext("2d");
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    for(const [x,y] of SHAPES.T[0]) drawSkinBlock(ctx,38+x*18,12+y*18,18,COLORS.T);
+    ctx.fillStyle="rgba(190,210,235,.72)";
+    ctx.font="9px monospace"; ctx.textAlign="center";
+    ctx.fillText(pieceSkin.toUpperCase(),105,76);
+  }
   function renderPreviews() {
     if (!player) return;
-    const key = (player.hold || "-") + "|" + player.queue.slice(0, 5).join("");
+    const key = pieceSkin + "|" + (player.hold || "-") + "|" + player.queue.slice(0, 5).join("");
     if (key === previewCacheKey) return;
     previewCacheKey = key;
     drawPreview($("holdCanvas"), player.hold, 0, 17);
@@ -1151,10 +1232,7 @@
       const px = (140 - (maxX - minX + 1) * cell) / 2 - minX * cell;
       const py = i * 66 + (60 - (maxY - minY + 1) * cell) / 2 - minY * cell;
       for (const [x,y] of shape) {
-        ctx.fillStyle = COLORS[type];
-        ctx.fillRect(px + x * cell + 1, py + y * cell + 1, cell - 2, cell - 2);
-        ctx.fillStyle = "rgba(255,255,255,.12)";
-        ctx.fillRect(px + x * cell + 2, py + y * cell + 2, cell - 4, 1);
+        drawSkinBlock(ctx,px+x*cell,py+y*cell,cell,COLORS[type]);
       }
     }
   }
@@ -1183,15 +1261,49 @@
       if (data) pill.querySelector("strong").textContent = String(data[1]());
     }
   }
+  function renderBotStats() {
+    const container=$("botStats");
+    if(!container || !bots.length) return;
+    const bot=bots[0];
+    const info={
+      score:["SCORE",()=>bot.score.toLocaleString()],
+      lines:["LINES",()=>bot.lines],
+      time:["TIME",()=>formatTime(runElapsed)],
+      level:["LEVEL",()=>bot.levelScore],
+      combo:["COMBO",()=>bot.combo<0?"—":bot.combo+1],
+      b2b:["B2B",()=>bot.b2b?"×"+bot.b2b:"—"],
+      pieces:["PIECES",()=>bot.pieces],
+      pps:["PPS",()=>(bot.pieces/Math.max(runElapsed/1000,.001)).toFixed(2)],
+      apm:["APM",()=>(bot.sent*60000/Math.max(runElapsed,1000)).toFixed(1)],
+      attack:["ATTACK",()=>bot.sent],
+      incoming:["INCOMING",()=>bot.incoming.length]
+    };
+    const key=selectedStats.join("|");
+    if(container.dataset.statsKey!==key){
+      container.textContent="";
+      for(const stat of selectedStats){
+        if(!info[stat]) continue;
+        const pill=document.createElement("div"); pill.className="stat-pill"; pill.dataset.stat=stat;
+        const label=document.createElement("span"); label.textContent=info[stat][0];
+        const value=document.createElement("strong"); value.textContent="—";
+        pill.append(label,value); container.append(pill);
+      }
+      container.dataset.statsKey=key;
+    }
+    for(const pill of container.querySelectorAll("[data-stat]")){
+      const item=info[pill.dataset.stat];
+      if(item) pill.querySelector("strong").textContent=String(item[1]());
+    }
+  }
   function renderAll(forceStats = false) {
     if (!player) return;
     const frame = $("boardFrame");
     if (frame) frame.style.transform = shake > 0
       ? "translate(" + ((Math.random() - .5) * shake) + "px," + ((Math.random() - .5) * shake) + "px)" : "";
-    drawBoard($("playerBoard"), player.board, player.current, false);
+    drawBoard($("playerBoard"),player.board,player.current,false);
     if (bots.length && bots[0].dirty) {
-      drawBoard($("botBoard0"), bots[0].board, null, true);
-      bots[0].dirty = false;
+      drawBoard($("botBoard0"),bots[0].board,bots[0].current,false,false);
+      bots[0].dirty=false;
     }
     renderPreviews();
     updateUI(forceStats);
@@ -1202,6 +1314,7 @@
     // Keep game rendering at refresh rate, but update secondary HUD text at 10 Hz.
     if (forceStats || now - lastUiAt >= 100) {
       renderRunStats();
+      renderBotStats();
       lastUiAt = now;
     }
     $("comboCount").textContent = "×" + Math.max(0, player.combo + 1);
@@ -1214,10 +1327,13 @@
     else if (currentMode === "cheese") $("runObjective").textContent = "DIG " + Math.max(0, 100 - player.lines) + " MORE LINES";
     else if (currentMode === "blitz") $("runObjective").textContent = "TIME LEFT · " + formatTime(blitzRemaining);
     else $("runObjective").textContent = bots[0]?.alive ? "OUTSTACK THE " + (bots[0]?.rank || "BOT") + " BOT" : "OPPONENT TOPPED OUT";
+    $("boardObjective").textContent = currentMode === "sprint" ? String(Math.max(0,40-player.lines))
+      : currentMode === "cheese" ? String(Math.max(0,100-player.lines))
+      : currentMode === "blitz" ? formatTime(blitzRemaining).slice(0,5) : "";
+    $("boardObjective").dataset.label = currentMode === "blitz" ? "TIME LEFT" : "LINES LEFT";
+    $("boardObjective").classList.toggle("visible",currentMode !== "botplay");
     if (bots.length) {
       const bot = bots[0];
-      $("botLines0").textContent = bot.lines;
-      $("botAttack0").textContent = bot.sent;
       $("botState0").textContent = !bot.alive ? "TOPPED OUT" : started ? "ACTIVE" : "READY";
       $("botRankChip").textContent = "LV. " + selectedBotLevel;
       $("botRankInGame").textContent = bot.rank + " RANK";
@@ -1288,6 +1404,8 @@
     updateSliderUI();
     renderKeybinds();
     renderStatsSettings();
+    $("pieceSkinSelect").value=pieceSkin;
+    renderSkinPreview();
   }
   $("openSingleplayer").addEventListener("click", () => {
     updateModeScreen();
@@ -1325,6 +1443,14 @@
   $("sdfSlider").addEventListener("input", (event) => { settings.sdf = Number(event.target.value); saveSettings(); });
   $("dasCancel").addEventListener("change", (event) => { settings.dasCancel = event.target.checked; saveSettings(); });
   document.querySelectorAll("#statOptions input").forEach((input) => input.addEventListener("change", saveStatsSettings));
+  $("pieceSkinSelect").addEventListener("change",(event) => {
+    pieceSkin=event.target.value;
+    try { localStorage.setItem("stacklab-piece-skin",pieceSkin); } catch (_) {}
+    previewCacheKey=null;
+    renderSkinPreview();
+    renderPreviews();
+    renderAll();
+  });
   $("themeSelect").addEventListener("change", (event) => {
     document.body.dataset.theme = event.target.value;
     try { localStorage.setItem("stacklab-theme", event.target.value); } catch (_) {}
