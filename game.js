@@ -304,7 +304,12 @@
     if (Array.isArray(savedStats)) selectedStats = savedStats.filter((key) => Object.prototype.hasOwnProperty.call({
       score:1,lines:1,time:1,level:1,combo:1,b2b:1,pieces:1,pps:1,apm:1,attack:1,incoming:1
     }, key));
-  } catch (_) { /* use defaults */ }
+    // Add PPS once to existing saved HUD profiles, then respect later opt-outs.
+    if (localStorage.getItem("stacklab-visible-stats-version") !== "2") {
+      if (!selectedStats.includes("pps")) selectedStats.push("pps");
+      localStorage.setItem("stacklab-visible-stats-version", "2");
+    }
+  } catch (_) { /* use defaults when storage is unavailable */ }
   let lastFrame = 0, gravityClock = 0, softClock = 0, lockClock = 0, lockResets = 0;
   let shift = { dir: 0, elapsed: 0, repeat: 0, instantDone: false };
   let held = new Set();
