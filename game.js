@@ -571,17 +571,24 @@
     if (!shift.dir || !started || paused) return;
     shift.elapsed += dt;
     if (shift.elapsed < settings.das) return;
+
     if (settings.arr === 0) {
-      if (!shift.instantDone) {
-        shiftToWall(shift.dir);
-        shift.instantDone = true;
-      }
+      // Instant ARR is continuous while the direction is held. Re-check the
+      // wall after rotations, because a rotation can open horizontal space.
+      shiftToWall(shift.dir);
+      shift.instantDone = true;
       return;
     }
+
     shift.repeat += dt;
     while (shift.repeat >= settings.arr) {
+      // Keep one repeat ready while blocked by a wall. Do not consume the
+      // ARR tick on collision: a rotation may make this direction movable.
+      if (!movePlayer(shift.dir)) {
+        shift.repeat = settings.arr;
+        break;
+      }
       shift.repeat -= settings.arr;
-      if (!movePlayer(shift.dir)) break;
     }
   }
   function softDropHeld() { return held.has("down"); }
