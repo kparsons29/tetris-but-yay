@@ -114,7 +114,9 @@
         <section class="settings-card">
           <div class="settings-card-head"><div><span class="section-kicker">04 / VISUALS</span><h2>ENVIRONMENT</h2></div><span class="settings-icon">◉</span></div>
           <label class="select-setting"><span>BACKGROUND SCENE</span><select id="themeSelect"><option value="aurora">Aurora</option><option value="midnight">Midnight</option><option value="sunset">Afterglow</option></select></label>
-          <div class="visual-note"><span class="live-dot"></span><span>PIECES USE A CLEAN, MINIMAL SKIN</span></div>
+          <label class="select-setting skin-select"><span>PIECE SKIN</span><select id="pieceSkinSelect"><option value="classic">Classic</option><option value="flat">Flat</option><option value="glass">Glass</option><option value="neon">Neon</option></select></label>
+          <canvas id="skinPreview" width="140" height="84" aria-label="Piece skin preview"></canvas>
+          <div class="visual-note"><span class="live-dot"></span><span>PREVIEW UPDATES AS YOU CHANGE THE SKIN</span></div>
         </section>
       </div>
     </section>
@@ -125,20 +127,12 @@
         <div class="game-mode-title"><span class="section-kicker" id="gameModeKicker">SINGLEPLAYER / 40L</span><h1 id="gameModeTitle">40 LINE SPRINT</h1></div>
         <div class="game-actions"><button class="game-action-button" id="restartButton" title="Restart">↻ <span>RESTART</span></button><button class="game-action-button primary-action" id="pauseButton" title="Pause">Ⅱ <span>PAUSE</span></button></div>
       </div>
-      <div class="play-layout">
+      <div class="play-layout" id="playLayout">
         <aside class="play-side hold-side">
           <section class="play-widget">
             <div class="widget-heading"><span>HOLD</span><kbd id="display-hold">C</kbd></div>
             <canvas id="holdCanvas" width="120" height="84" aria-label="Held piece"></canvas>
             <p class="widget-hint" id="holdHint">EMPTY</p>
-          </section>
-          <section class="play-widget bot-info hidden" id="botInfo">
-            <div class="widget-heading"><span>OPPONENT</span><span class="bot-rank-chip" id="botRankChip">LV. 3</span></div>
-            <strong id="botNameInGame">STACK BOT</strong>
-            <span id="botRankInGame">LOW B RANK</span>
-            <canvas id="botBoard0" width="100" height="200" aria-label="Opponent playing field"></canvas>
-            <div class="bot-mini-stats"><span>LINES <b id="botLines0">0</b></span><span>ATTACK <b id="botAttack0">0</b></span></div>
-            <span class="bot-state" id="botState0">READY</span>
           </section>
         </aside>
         <section class="field-column">
@@ -146,6 +140,7 @@
           <div class="board-frame" id="boardFrame">
             <canvas id="playerBoard" width="300" height="600" aria-label="Your 10 by 20 game board"></canvas>
             <div class="board-scanline"></div>
+            <div class="board-objective" id="boardObjective" aria-hidden="true"></div>
             <div class="board-float-popup attack-popup" id="attackPopup" aria-hidden="true"></div>
             <div class="board-float-popup cancel-popup" id="cancelPopup" aria-hidden="true"></div>
             <div class="pause-overlay hidden" id="pauseOverlay"><div class="pause-card"><span class="section-kicker">RUN PAUSED</span><h2>TAKE A BREATHER.</h2><p>Your run is saved while paused.</p><button class="primary-button" id="resumeButton">RESUME <span>→</span></button><button class="secondary-button full-button" id="pauseRestartButton">RESTART RUN</button><button class="text-button" id="pauseMenuButton">BACK TO MENU</button></div></div>
@@ -165,6 +160,16 @@
             <div class="combo-counter" id="comboHud"><span>COMBO</span><strong id="comboCount">×0</strong></div>
           </div>
           <div class="run-stats" id="runStats"></div>
+        </aside>
+        <aside class="opponent-side hidden" id="opponentSide">
+          <section class="play-widget bot-info" id="botInfo">
+            <div class="widget-heading"><span>OPPONENT FIELD</span><span class="bot-rank-chip" id="botRankChip">LV. 3</span></div>
+            <strong id="botNameInGame">STACK BOT</strong>
+            <span id="botRankInGame">LOW B RANK</span>
+            <canvas id="botBoard0" width="300" height="600" aria-label="Opponent 10 by 20 playing field"></canvas>
+            <div class="bot-state" id="botState0">READY</div>
+            <div class="bot-stats" id="botStats"></div>
+          </section>
         </aside>
       </div>
     </section>
