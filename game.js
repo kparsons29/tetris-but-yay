@@ -818,27 +818,61 @@
     const maxHeight = Math.max(...heights);
     return { holes, aggregate, bump, maxHeight };
   }
-  function bestBotPlacement(bot) {
-    const piece = bot.current;
-    let best = null, bestValue = -Infinity;
+  function botBoardValue(board, bot) {
+    const metrics = evaluateBoard(board);
+    const clearBonus = 0;
+    return -metrics.holes * bot.holeWeight
+      - metrics.aggregate * 0.43
+      - metrics.bump * 0.34
+      - metrics.maxHeight * bot.heightWeight
+      + clearBonus;
+  }
+  function enumerateBotPlacements(board, type) {
+    const piece = makePiece(type);
+    const candidates = [];
+    const seen = new Set();
     for (let rot = 0; rot < 4; rot++) {
+      const shapeKey = SHAPES[type][rot].map((c) => c.join(",")).sort().join(";");
+      if (seen.has(shapeKey)) continue;
+      seen.add(shapeKey);
       for (let x = -2; x < W; x++) {
         let y = 0;
-        if (collides(bot.board, piece, x, y, rot)) continue;
-        while (!collides(bot.board, piece, x, y + 1, rot)) y++;
-        const trial = cloneBoard(bot.board);
-        const placed = { ...piece, x, y, rot };
-        if (!mergePiece(trial, placed)) continue;
+        if (collides(board, piece, x, y, rot)) continue;
+        while (!collides(board, piece, x, y + 1, rot)) y++;
+        const trial = cloneBoard(board);
+        if (!mergePiece(trial, { ...piece, x, y, rot })) continue;
         const lines = clearLines(trial);
-        const metrics = evaluateBoard(trial);
-        let value = -metrics.holes * 5.8 - metrics.aggregate * 0.49 - metrics.bump * 0.38 - metrics.maxHeight * 0.7 + lines * [0,2.1,5.0,8.5,15.2][lines];
-        if (lines === 4) value += 3;
-        if (rot === 0) value += 0.1;
-        value += (Math.random() - 0.5) * (bot.index === 0 ? 2.2 : bot.index === 1 ? 0.8 : 0.3);
-        if (value > bestValue) {
-          bestValue = value;
-          best = { x, y, rot, board: trial, lines };
+        candidates.push({ board: trial, lines, x, y, rot });
+      }
+    }
+    return candidates;
+  }
+  function bestBotPlacement(bot) {
+    const placements = enumerateBotPlacements(bot.board, bot.current.type);
+    let best = null, bestValue = -Infinity;
+    const tier = BOT_TIERS[bot.level] || BOT_TIERS[3];
+    for (const candidate of placements) {
+      let value = botBoardValue(candidate.board, bot);
+      value += candidate.lines * [0,2.1,5.0,8.5,15.2][candidate.lines];
+      if (candidate.lines === 4) value += 3.5;
+      if (candidate.rot === 0) value += 0.08;
+      // The highest tier plans one additional piece ahead instead of only
+      // taking the locally best landing spot.
+      if (bot.level >= 5 && bot.queue.length) {
+        const nextCandidates = enumerateBotPlacements(candidate.board, bot.queue[0]);
+        let lookahead = -Infinity;
+        for (const next of nextCandidates) {
+          let nextValue = botBoardValue(next.board, bot);
+          nextValue += next.lines * [0,2.1,5.0,8.5,15.2][next.lines];
+          if (next.lines === 4) nextValue += 3.5;
+          if (nextValue > lookahead) lookahead = nextValue;
         }
+        if (Number.isFinite(lookahead)) value += lookahead * 0.58;
+      }
+      value += (Math.random() - 0.5) * tier.noise;
+      if (value > bestValue) {
+        bestValue = value;
+        best = candidate;
       }
     }
     return best;
@@ -865,6 +899,7 @@
     if (collides(bot.board, bot.current)) bot.alive = false;
   }
   function updateBots(dt) {
+    if (currentMode !== "botplay" || !bots.length || ended) return;
     for (const bot of bots) {
       if (!bot.alive) continue;
       processGarbage(bot, dt, false);
