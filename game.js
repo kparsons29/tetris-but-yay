@@ -343,6 +343,7 @@
     currentPage = pageId;
     document.querySelectorAll(".page").forEach((page) => page.classList.toggle("hidden", page.id !== pageId));
     $("siteHeader").classList.toggle("game-header", pageId === "gamePage");
+    document.body.classList.toggle("in-game", pageId === "gamePage");
     $("appRoot").dataset.page = pageId;
     window.scrollTo(0, 0);
   }
@@ -1105,8 +1106,6 @@
     if (!player) return;
     renderRunStats();
     $("holdHint").textContent = player.hold ? "READY TO SWAP" : "EMPTY";
-    $("lastMove").textContent = player.lastMove;
-    $("spinValue").textContent = player.spin;
     $("speedLabel").textContent = (950 / gravityInterval(player.level)).toFixed(1) + "× GRAVITY";
     $("pauseButton").innerHTML = paused ? "▶ <span>RESUME</span>" : "Ⅱ <span>PAUSE</span>";
     $("battleStatus").textContent = ended ? "RUN COMPLETE" : paused ? "PAUSED" : started ? "RUN IN PROGRESS" : "READY";
