@@ -4,199 +4,173 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#090d16">
-  <meta name="description" content="A fast, configurable versus block-stacking game.">
-  <title>STACK//LAB — Versus</title>
+  <meta name="description" content="STACK//LAB — a fast, configurable block-stacking game.">
+  <title>STACK//LAB</title>
   <link rel="stylesheet" href="styles.css">
   <script src="game.js" defer></script>
 </head>
 <body data-theme="aurora">
-  <div class="ambient ambient-one"></div>
-  <div class="ambient ambient-two"></div>
-  <header class="topbar">
-    <a class="brand" href="#" aria-label="Stack Lab home">
-      <span class="brand-mark">S<span>+</span></span>
-      <span class="brand-name">STACK<span>//</span>LAB</span>
+  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+  <header class="topbar" id="siteHeader">
+    <a class="brand" href="#" id="brandHome" aria-label="STACK LAB home">
+      <span class="brand-mark">S<span>+</span></span><span class="brand-name">STACK<span>//</span>LAB</span>
     </a>
-    <div class="topbar-center">
-      <span class="live-dot"></span>
-      <span>VERSUS LAB</span>
-      <span class="topbar-divider">/</span>
-      <span class="muted">LOCAL MATCH</span>
-    </div>
-    <div class="topbar-actions">
-      <span class="system-chip"><span class="system-dot"></span> SRS+ ENGINE</span>
-      <label class="theme-picker">
-        <span>SCENE</span>
-        <select id="themeSelect" aria-label="Background theme">
-          <option value="aurora">Aurora</option>
-          <option value="midnight">Midnight</option>
-          <option value="sunset">Afterglow</option>
-        </select>
-      </label>
-      <button class="icon-button" id="pauseButton" title="Pause (P)" aria-label="Pause game">Ⅱ</button>
-      <button class="icon-button" id="restartButton" title="Restart (R)" aria-label="Restart match">↻</button>
-    </div>
+    <div class="topbar-center"><span class="live-dot"></span><span>STACKING SYSTEM</span><span class="topbar-divider">/</span><span class="muted">BUILD 0.2</span></div>
+    <div class="topbar-actions"><span class="system-chip"><span class="system-dot"></span> SRS+ ENGINE</span></div>
   </header>
 
-  <main class="game-layout">
-    <aside class="left-column">
-      <section class="panel identity-panel">
-        <div class="section-kicker">PLAYER 01</div>
-        <div class="player-name-row">
-          <div class="avatar">Y</div>
-          <div><h1>YOU</h1><p>THE CHALLENGER</p></div>
-          <span class="online-pill">ONLINE</span>
+  <main id="appRoot">
+    <section class="page home-page" id="homePage">
+      <div class="home-copy">
+        <div class="eyebrow"><span class="live-dot"></span> A NEW KIND OF STACKING EXPERIENCE</div>
+        <div class="hero-mark">S<span>+</span></div>
+        <h1>STACK<br><em>YOUR WAY.</em></h1>
+        <p class="hero-description">A clean, fast block-stacking lab. Tune your handling, find your rhythm, and chase the perfect run.</p>
+        <div class="home-actions">
+          <button class="primary-button large-button" id="openSingleplayer">SINGLEPLAYER <span>→</span></button>
+          <button class="secondary-button large-button" id="openSettings">SETTINGS <span>⚙</span></button>
         </div>
-        <div class="identity-footer"><span>RATING <b>UNRANKED</b></span><span>● SOLO</span></div>
-      </section>
-
-      <section class="panel mini-panel">
-        <div class="panel-heading"><span>HOLD</span><kbd>C</kbd></div>
-        <div class="piece-preview"><canvas id="holdCanvas" width="120" height="84" aria-label="Held piece"></canvas></div>
-        <div class="panel-subtext" id="holdHint">EMPTY — TAP C TO HOLD</div>
-      </section>
-
-      <section class="panel stats-panel">
-        <div class="panel-heading"><span>RUN DATA</span><span class="tiny-live">● LIVE</span></div>
-        <div class="stat-grid">
-          <div><span>SCORE</span><strong id="scoreValue">0</strong></div>
-          <div><span>LINES</span><strong id="linesValue">0</strong></div>
-          <div><span>LEVEL</span><strong id="levelValue">1</strong></div>
-          <div><span>COMBO</span><strong id="comboValue">—</strong></div>
-        </div>
-        <div class="streak-row"><span>BACK-TO-BACK</span><strong id="b2bValue">—</strong></div>
-        <div class="attack-meter">
-          <div class="attack-label"><span>INCOMING</span><strong id="incomingValue">0</strong></div>
-          <div class="meter-track"><i id="incomingBar"></i></div>
-          <div class="incoming-note" id="incomingNote">NO INCOMING ATTACKS</div>
-        </div>
-      </section>
-
-      <section class="panel handling-panel">
-        <div class="panel-heading"><span>HANDLING</span><span class="tiny-tag">CUSTOM</span></div>
-        <div class="slider-setting">
-          <div class="setting-top"><label for="dasSlider">DAS <small>delay</small></label><output id="dasOutput">120 ms</output></div>
-          <input id="dasSlider" type="range" min="0" max="300" step="5" value="120">
-          <div class="range-labels"><span>INSTANT</span><span>300 ms</span></div>
-        </div>
-        <div class="slider-setting">
-          <div class="setting-top"><label for="arrSlider">ARR <small>repeat</small></label><output id="arrOutput">20 ms</output></div>
-          <input id="arrSlider" type="range" min="0" max="100" step="1" value="20">
-          <div class="range-labels"><span>INSTANT</span><span>100 ms</span></div>
-        </div>
-        <div class="slider-setting">
-          <div class="setting-top"><label for="sdfSlider">SDF <small>soft drop</small></label><output id="sdfOutput">10×</output></div>
-          <input id="sdfSlider" type="range" min="1" max="21" step="1" value="10">
-          <div class="range-labels"><span>1×</span><span>∞ INSTANT</span></div>
-        </div>
-        <label class="toggle-row"><span>DAS cancellation <small>reset on direction change</small></span><input id="dasCancel" type="checkbox"><i></i></label>
-        <div class="handling-foot">SETTINGS SAVE AUTOMATICALLY</div>
-      </section>
-
-      <section class="panel queue-panel">
-        <div class="panel-heading"><span>NEXT</span><span class="tiny-tag">5 QUEUE</span></div>
-        <canvas id="nextCanvas" width="140" height="340" aria-label="Next five pieces"></canvas>
-      </section>
-    </aside>
-
-    <section class="center-column">
-      <div class="match-heading">
-        <div><span class="section-kicker">MATCH 001 / PRACTICE ROOM</span><h2>LAST STACKING</h2></div>
-        <div class="match-badges"><span class="mode-badge">3 BOT FREE-FOR-ALL</span><span class="round-badge">ROUND 01</span></div>
+        <div class="home-foot"><span>01 / PRACTICE YOUR CRAFT</span><span>NO ACCOUNT REQUIRED</span></div>
       </div>
-      <div class="arena-row">
-        <div class="board-column">
-          <div class="board-topline"><span><i class="live-dot"></i> YOUR FIELD</span><span id="speedLabel">1.0× GRAVITY</span></div>
-          <div class="board-frame" id="boardFrame">
-            <canvas id="playerBoard" width="300" height="600" aria-label="Your 10 by 20 game board"></canvas>
-            <div class="board-scanline"></div>
-            <div class="start-overlay" id="startOverlay">
-              <div class="overlay-orbit">S+</div>
-              <p class="section-kicker">READY WHEN YOU ARE</p>
-              <h2>STACK<br><em>SMARTER.</em></h2>
-              <p class="overlay-copy">Outstack the bots. Build clean. Send the garbage back.</p>
-              <button class="primary-button" id="startButton">START MATCH <span>→</span></button>
-              <div class="overlay-foot">PRESS ENTER TO DEPLOY</div>
-            </div>
-            <div class="pause-overlay hidden" id="pauseOverlay"><span>PAUSED</span><small>PRESS P TO RESUME</small></div>
-          </div>
-          <div class="board-footer">
-            <div><span>ATTACK</span><strong id="attackValue">0</strong></div>
-            <div><span>APM</span><strong id="apmValue">0</strong></div>
-            <div><span>PIECES</span><strong id="piecesValue">0</strong></div>
-            <div class="battle-status"><i class="live-dot"></i><span id="battleStatus">WAITING FOR MATCH</span></div>
-          </div>
-        </div>
-        <div class="side-tools">
-          <section class="panel key-panel">
-            <div class="panel-heading"><span>KEYMAP</span><button class="edit-keybinds" id="editKeybinds" type="button">EDIT ↗</button></div>
-            <div class="key-row"><span>MOVE</span><div><kbd id="display-left">←</kbd><kbd id="display-right">→</kbd></div></div>
-            <div class="key-row"><span>SOFT DROP</span><kbd id="display-down">↓</kbd></div>
-            <div class="key-row"><span>HARD DROP</span><kbd class="wide-key" id="display-hardDrop">SPACE</kbd></div>
-            <div class="key-row"><span>ROTATE</span><div><kbd id="display-rotateCCW">Z</kbd><kbd id="display-rotateCW">X</kbd></div></div>
-            <div class="key-row"><span>180°</span><kbd id="display-rotate180">A</kbd></div>
-            <div class="key-row"><span>HOLD</span><kbd id="display-hold">C</kbd></div>
-            <div class="key-row"><span>PAUSE</span><kbd id="display-pause">P</kbd></div>
-            <div class="key-row"><span>RESTART</span><kbd id="display-restart">R</kbd></div>
-            <div class="key-row"><span>START</span><kbd id="display-start">ENTER</kbd></div>
-          </section>
-          <section class="panel info-panel">
-            <div class="panel-heading"><span>ROTATION</span><span class="tiny-tag accent-tag">SRS+</span></div>
-            <p>Guideline kicks for JLSTZ, symmetric SRS+ I-piece kicks, and dedicated 180° tests.</p>
-            <div class="rotation-chip"><span>LAST MOVE</span><strong id="lastMove">—</strong></div>
-            <div class="rotation-chip"><span>SPIN TYPE</span><strong id="spinValue">—</strong></div>
-          </section>
-        </div>
-      </div>
-      <div class="mobile-controls" aria-label="Touch controls">
-        <button data-touch="left">◀<small>LEFT</small></button>
-        <button data-touch="down">▼<small>DROP</small></button>
-        <button data-touch="right">▶<small>RIGHT</small></button>
-        <button data-touch="ccw">↶<small>CCW</small></button>
-        <button data-touch="cw">↻<small>CW</small></button>
-        <button data-touch="hard">⬇<small>HARD</small></button>
-        <button data-touch="hold">HOLD<small>C</small></button>
-        <button data-touch="180">180°<small>A</small></button>
+      <div class="home-art" aria-hidden="true">
+        <div class="art-grid"></div><div class="art-orbit orbit-a"></div><div class="art-orbit orbit-b"></div>
+        <div class="floating-piece piece-t"><i></i><i></i><i></i><i></i></div>
+        <div class="floating-piece piece-l"><i></i><i></i><i></i><i></i></div>
+        <div class="floating-piece piece-i"><i></i><i></i><i></i><i></i></div>
+        <div class="art-caption"><b>10 × 20</b><span>THE PLAYING FIELD</span></div>
       </div>
     </section>
 
-    <aside class="right-column">
-      <div class="opponents-heading"><div><span class="section-kicker">THE OTHER SIDE</span><h2>OPPONENTS <b>03</b></h2></div><span class="target-pill">ALL TARGETING YOU</span></div>
-      <div class="opponent-list" id="opponentList">
-        <article class="opponent-card" data-bot="0">
-          <div class="opponent-top"><div class="bot-avatar bot-cyan">01</div><div class="bot-name"><strong>PIXEL</strong><span>CASUAL / LV. 04</span></div><span class="bot-state" id="botState0">IDLE</span></div>
-          <div class="bot-field-row"><canvas id="botBoard0" width="100" height="200" aria-label="Pixel's field"></canvas><div class="bot-stats"><span>LINES <b id="botLines0">0</b></span><span>ATTACK <b id="botAttack0">0</b></span><span>INCOMING <b id="botIncoming0">0</b></span><div class="bot-health"><i id="botHealth0"></i></div><small>FIELD PRESSURE</small></div></div>
-        </article>
-        <article class="opponent-card" data-bot="1">
-          <div class="opponent-top"><div class="bot-avatar bot-violet">02</div><div class="bot-name"><strong>GLITCH</strong><span>STANDARD / LV. 12</span></div><span class="bot-state" id="botState1">IDLE</span></div>
-          <div class="bot-field-row"><canvas id="botBoard1" width="100" height="200" aria-label="Glitch's field"></canvas><div class="bot-stats"><span>LINES <b id="botLines1">0</b></span><span>ATTACK <b id="botAttack1">0</b></span><span>INCOMING <b id="botIncoming1">0</b></span><div class="bot-health"><i id="botHealth1"></i></div><small>FIELD PRESSURE</small></div></div>
-        </article>
-        <article class="opponent-card" data-bot="2">
-          <div class="opponent-top"><div class="bot-avatar bot-orange">03</div><div class="bot-name"><strong>OVERDRIVE</strong><span>EXPERT / LV. 26</span></div><span class="bot-state" id="botState2">IDLE</span></div>
-          <div class="bot-field-row"><canvas id="botBoard2" width="100" height="200" aria-label="Overdrive's field"></canvas><div class="bot-stats"><span>LINES <b id="botLines2">0</b></span><span>ATTACK <b id="botAttack2">0</b></span><span>INCOMING <b id="botIncoming2">0</b></span><div class="bot-health"><i id="botHealth2"></i></div><small>FIELD PRESSURE</small></div></div>
-        </article>
+    <section class="page selection-page hidden" id="singleplayerPage">
+      <div class="page-top"><button class="back-button" data-page="homePage">← BACK</button><span class="eyebrow">GAME SETUP / 01</span></div>
+      <div class="page-heading"><span class="section-kicker">CHOOSE YOUR CHALLENGE</span><h1>SINGLEPLAYER<span>.</span></h1><p>Pick a mode. Set your pace. Make every piece count.</p></div>
+      <div class="mode-grid">
+        <button class="mode-card" data-mode="cheese">
+          <div class="mode-index">01</div><div class="mode-art cheese-art"><span>100</span><i></i><i></i><i></i></div>
+          <div class="mode-card-copy"><span class="mode-tag">DIG / ENDURANCE</span><h2>100L CHEESE</h2><p>Clear 100 lines through a tall stack of messy garbage. Find the clean path out.</p><div class="mode-meta"><span>100 LINES</span><span>GARBAGE START</span></div></div>
+        </button>
+        <button class="mode-card selected" data-mode="sprint">
+          <div class="mode-index">02</div><div class="mode-art sprint-art"><span>40</span><i></i><i></i><i></i></div>
+          <div class="mode-card-copy"><span class="mode-tag">SPEED / TIME ATTACK</span><h2>40 LINE SPRINT</h2><p>Race to 40 lines as fast as you can. A clean stack is a fast stack.</p><div class="mode-meta"><span>40 LINES</span><span>FASTEST TIME</span></div></div>
+        </button>
+        <button class="mode-card" data-mode="blitz">
+          <div class="mode-index">03</div><div class="mode-art blitz-art"><span>2:00</span><i></i><i></i><i></i></div>
+          <div class="mode-card-copy"><span class="mode-tag">SCORE / SURVIVAL</span><h2>2 MIN BLITZ</h2><p>Two minutes on the clock. Stack, clear and score as much as possible.</p><div class="mode-meta"><span>120 SECONDS</span><span>HIGH SCORE</span></div></div>
+        </button>
+        <button class="mode-card" data-mode="botplay">
+          <div class="mode-index">04</div><div class="mode-art bot-art"><span>1V1</span><i></i><i></i><i></i></div>
+          <div class="mode-card-copy"><span class="mode-tag">VERSUS / AI</span><h2>BOTPLAY</h2><p>Take on a single opponent. Five difficulty tiers, from beginner to elite.</p><div class="mode-meta"><span>1 VS 1</span><span>GARBAGE ATTACKS</span></div></div>
+        </button>
       </div>
-      <section class="panel match-log">
-        <div class="panel-heading"><span>COMBAT LOG</span><span class="tiny-live">● FEED</span></div>
-        <div id="combatLog" class="log-lines"><p class="log-muted">Waiting for the first drop...</p></div>
-      </section>
-      <div class="disclaimer-line"><span>LOCAL AI MATCH</span><span>NO NETWORK REQUIRED</span></div>
-    </aside>
+      <div class="mode-footer">
+        <div class="bot-level-picker hidden" id="botLevelPicker">
+          <div><span class="section-kicker">BOT DIFFICULTY</span><strong id="botLevelDescription">LEVEL 3 · LOW B RANK</strong></div>
+          <div class="bot-level-buttons">
+            <button data-bot-level="1"><b>1</b><small>D / D+</small></button>
+            <button data-bot-level="2"><b>2</b><small>C− / C</small></button>
+            <button class="selected" data-bot-level="3"><b>3</b><small>LOW B</small></button>
+            <button data-bot-level="4"><b>4</b><small>A</small></button>
+            <button data-bot-level="5"><b>5</b><small>S+</small></button>
+          </div>
+        </div>
+        <div class="mode-start-row"><span id="modeHint">40 lines · fastest time wins</span><button class="primary-button" id="startSelectedMode">START MODE <span>→</span></button></div>
+      </div>
+    </section>
+
+    <section class="page settings-page hidden" id="settingsPage">
+      <div class="page-top"><button class="back-button" data-page="homePage">← BACK</button><span class="eyebrow">CONFIGURATION / SYSTEM</span></div>
+      <div class="page-heading"><span class="section-kicker">MAKE IT YOURS</span><h1>SETTINGS<span>.</span></h1><p>Your handling, controls and in-game HUD. Settings save automatically.</p></div>
+      <div class="settings-grid">
+        <section class="settings-card">
+          <div class="settings-card-head"><div><span class="section-kicker">01 / HANDLING</span><h2>INPUT FEEL</h2></div><span class="settings-icon">↔</span></div>
+          <div class="slider-setting"><div class="setting-top"><label for="dasSlider">DAS <small>delayed auto shift</small></label><output id="dasOutput">120 ms</output></div><input id="dasSlider" type="range" min="0" max="300" step="5" value="120"><div class="range-labels"><span>INSTANT</span><span>300 ms</span></div></div>
+          <div class="slider-setting"><div class="setting-top"><label for="arrSlider">ARR <small>auto repeat rate</small></label><output id="arrOutput">20 ms</output></div><input id="arrSlider" type="range" min="0" max="100" step="1" value="20"><div class="range-labels"><span>INSTANT</span><span>100 ms</span></div></div>
+          <div class="slider-setting"><div class="setting-top"><label for="sdfSlider">SDF <small>soft drop factor</small></label><output id="sdfOutput">10×</output></div><input id="sdfSlider" type="range" min="1" max="21" step="1" value="10"><div class="range-labels"><span>1×</span><span>∞ INSTANT</span></div></div>
+          <label class="toggle-row"><span>DAS cancellation<small>reset charge on direction change</small></span><input id="dasCancel" type="checkbox"><i></i></label>
+        </section>
+        <section class="settings-card">
+          <div class="settings-card-head"><div><span class="section-kicker">02 / CONTROLS</span><h2>KEYBINDS</h2></div><span class="settings-icon">⌘</span></div>
+          <p class="settings-description">Remap every action to your preferred keys. Duplicate assignments swap automatically.</p>
+          <div class="keybind-summary" id="keybindSummary"></div>
+          <button class="secondary-button full-button" id="editKeybinds">EDIT KEYBINDS <span>↗</span></button>
+        </section>
+        <section class="settings-card">
+          <div class="settings-card-head"><div><span class="section-kicker">03 / IN-GAME HUD</span><h2>VISIBLE STATS</h2></div><span class="settings-icon">▤</span></div>
+          <p class="settings-description">Choose which stats appear beneath the playing field. You can change this any time outside a run.</p>
+          <div class="stat-options" id="statOptions">
+            <label><input type="checkbox" value="score" checked><span>SCORE</span></label>
+            <label><input type="checkbox" value="lines" checked><span>LINES</span></label>
+            <label><input type="checkbox" value="time" checked><span>TIME</span></label>
+            <label><input type="checkbox" value="level"><span>LEVEL</span></label>
+            <label><input type="checkbox" value="combo"><span>COMBO</span></label>
+            <label><input type="checkbox" value="b2b"><span>BACK-TO-BACK</span></label>
+            <label><input type="checkbox" value="pieces"><span>PIECES</span></label>
+            <label><input type="checkbox" value="apm"><span>APM</span></label>
+            <label><input type="checkbox" value="attack"><span>ATTACK SENT</span></label>
+            <label><input type="checkbox" value="incoming"><span>INCOMING</span></label>
+          </div>
+        </section>
+        <section class="settings-card">
+          <div class="settings-card-head"><div><span class="section-kicker">04 / VISUALS</span><h2>ENVIRONMENT</h2></div><span class="settings-icon">◉</span></div>
+          <label class="select-setting"><span>BACKGROUND SCENE</span><select id="themeSelect"><option value="aurora">Aurora</option><option value="midnight">Midnight</option><option value="sunset">Afterglow</option></select></label>
+          <div class="visual-note"><span class="live-dot"></span><span>PIECES USE A CLEAN, MINIMAL SKIN</span></div>
+        </section>
+      </div>
+    </section>
+
+    <section class="page game-page hidden" id="gamePage">
+      <div class="game-topbar">
+        <button class="back-button" id="gameMenuButton">← MENU</button>
+        <div class="game-mode-title"><span class="section-kicker" id="gameModeKicker">SINGLEPLAYER / 40L</span><h1 id="gameModeTitle">40 LINE SPRINT</h1></div>
+        <div class="game-actions"><button class="game-action-button" id="restartButton" title="Restart">↻ <span>RESTART</span></button><button class="game-action-button primary-action" id="pauseButton" title="Pause">Ⅱ <span>PAUSE</span></button></div>
+      </div>
+      <div class="play-layout">
+        <aside class="play-side hold-side">
+          <section class="play-widget">
+            <div class="widget-heading"><span>HOLD</span><kbd id="display-hold">C</kbd></div>
+            <canvas id="holdCanvas" width="120" height="84" aria-label="Held piece"></canvas>
+            <p class="widget-hint" id="holdHint">EMPTY</p>
+          </section>
+          <section class="play-widget bot-info hidden" id="botInfo">
+            <div class="widget-heading"><span>OPPONENT</span><span class="bot-rank-chip" id="botRankChip">LV. 3</span></div>
+            <strong id="botNameInGame">STACK BOT</strong>
+            <span id="botRankInGame">LOW B RANK</span>
+            <canvas id="botBoard0" width="100" height="200" aria-label="Opponent playing field"></canvas>
+            <div class="bot-mini-stats"><span>LINES <b id="botLines0">0</b></span><span>ATTACK <b id="botAttack0">0</b></span></div>
+            <span class="bot-state" id="botState0">READY</span>
+          </section>
+        </aside>
+        <section class="field-column">
+          <div class="field-topline"><span><i class="live-dot"></i> YOUR FIELD</span><span id="speedLabel">1.0× GRAVITY</span></div>
+          <div class="board-frame" id="boardFrame">
+            <canvas id="playerBoard" width="300" height="600" aria-label="Your 10 by 20 game board"></canvas>
+            <div class="board-scanline"></div>
+            <div class="pause-overlay hidden" id="pauseOverlay"><div class="pause-card"><span class="section-kicker">RUN PAUSED</span><h2>TAKE A BREATHER.</h2><p>Your run is saved while paused.</p><button class="primary-button" id="resumeButton">RESUME <span>→</span></button><button class="secondary-button full-button" id="pauseRestartButton">RESTART RUN</button><button class="text-button" id="pauseMenuButton">BACK TO MENU</button></div></div>
+            <div class="pause-overlay hidden" id="resultOverlay"><div class="pause-card"><span class="section-kicker" id="resultKicker">RUN COMPLETE</span><h2 id="resultTitle">NICE RUN.</h2><p id="resultSummary">Your result will appear here.</p><div class="result-stats" id="resultStats"></div><button class="primary-button" id="retryGame">PLAY AGAIN <span>→</span></button><button class="secondary-button full-button" id="resultMenuButton">BACK TO MENU</button></div></div>
+          </div>
+          <div class="run-status"><span id="battleStatus">READY</span><span id="runObjective">CLEAR 40 LINES</span></div>
+          <div class="run-stats" id="runStats"></div>
+          <div class="mobile-controls" aria-label="Touch controls">
+            <button data-touch="left">◀<small>LEFT</small></button><button data-touch="down">▼<small>DROP</small></button><button data-touch="right">▶<small>RIGHT</small></button>
+            <button data-touch="ccw">↶<small>CCW</small></button><button data-touch="cw">↻<small>CW</small></button><button data-touch="hard">⬇<small>HARD</small></button>
+            <button data-touch="hold">HOLD<small>C</small></button><button data-touch="180">180°<small>A</small></button>
+          </div>
+        </section>
+        <aside class="play-side next-side">
+          <section class="play-widget next-widget"><div class="widget-heading"><span>NEXT</span><span class="tiny-tag">5 QUEUE</span></div><canvas id="nextCanvas" width="140" height="340" aria-label="Next five pieces"></canvas></section>
+        </aside>
+      </div>
+    </section>
   </main>
 
-  <footer class="site-footer"><span>STACK//LAB <b>BUILD 0.1.0</b></span><span>PLAY CLEAN. PLAY FAST.</span><span>MADE FOR THE STACKING COMMUNITY</span></footer>
+  <footer class="site-footer"><span>STACK//LAB <b>BUILD 0.2.0</b></span><span>PLAY CLEAN. PLAY FAST.</span><span>MADE FOR THE STACKING COMMUNITY</span></footer>
+
   <div class="keybind-backdrop hidden" id="keybindModal">
     <section class="keybind-dialog" role="dialog" aria-modal="true" aria-labelledby="keybindTitle">
-      <div class="keybind-dialog-head">
-        <div><span class="section-kicker">CONTROL CONFIGURATION</span><h2 id="keybindTitle">CUSTOM KEYBINDS</h2></div>
-        <button class="icon-button" id="closeKeybinds" type="button" aria-label="Close keybind settings">×</button>
-      </div>
-      <p class="keybind-intro">Select any action, then press the key you want to use. If that key is already assigned, the two bindings will swap.</p>
+      <div class="keybind-dialog-head"><div><span class="section-kicker">CONTROL CONFIGURATION</span><h2 id="keybindTitle">CUSTOM KEYBINDS</h2></div><button class="icon-button" id="closeKeybinds" type="button" aria-label="Close keybind settings">×</button></div>
+      <p class="keybind-intro">Select an action, then press the key you want. If that key is already assigned, the two bindings will swap.</p>
       <div class="keybind-grid" id="keybindRows"></div>
-      <div class="keybind-dialog-foot">
-        <span id="keybindStatus" role="status">Changes save automatically on this device.</span>
-        <div><button class="secondary-button" id="resetKeybinds" type="button">RESET DEFAULTS</button><button class="primary-button compact-button" id="doneKeybinds" type="button">DONE</button></div>
-      </div>
+      <div class="keybind-dialog-foot"><span id="keybindStatus" role="status">Changes save automatically on this device.</span><div><button class="secondary-button" id="resetKeybinds" type="button">RESET DEFAULTS</button><button class="primary-button compact-button" id="doneKeybinds" type="button">DONE</button></div></div>
     </section>
   </div>
 </body>

@@ -199,6 +199,19 @@
       const el = $(id);
       if (el) el.textContent = keyLabel(keybinds[action]);
     }
+    const summary = $("keybindSummary");
+    if (summary) {
+      summary.textContent = "";
+      for (const action of ["left","right","down","hardDrop","rotateCCW","rotateCW","rotate180","hold"]) {
+        const item = document.createElement("span");
+        const label = keybindActions.find(([id]) => id === action)[1];
+        item.append(document.createTextNode(label.toUpperCase()));
+        const key = document.createElement("kbd");
+        key.textContent = keyLabel(keybinds[action]);
+        item.append(key);
+        summary.append(item);
+      }
+    }
   }
   function clearHeldControls() {
     held.clear();
@@ -250,6 +263,45 @@
   let player = null;
   let bots = [];
   let started = false, paused = false, ended = false;
+  let currentPage = "homePage";
+  let currentMode = "sprint";
+  let selectedMode = "sprint";
+  let selectedBotLevel = 3;
+  let runElapsed = 0;
+  let blitzRemaining = 120000;
+  let selectedStats = ["score", "lines", "time"];
+  const STAT_INFO = {
+    score: ["SCORE", () => player.score.toLocaleString()],
+    lines: ["LINES", () => player.lines],
+    time: ["TIME", () => formatTime(currentMode === "blitz" ? Math.max(0, blitzRemaining) : runElapsed)],
+    level: ["LEVEL", () => player.level],
+    combo: ["COMBO", () => player.combo < 0 ? "—" : player.combo],
+    b2b: ["B2B", () => player.b2b ? "×" + player.b2b : "—"],
+    pieces: ["PIECES", () => player.pieces],
+    apm: ["APM", () => { const now = Date.now(); apmWindow = apmWindow.filter((time) => now - time < 60000); return apmWindow.length; }],
+    attack: ["ATTACK", () => player.sent],
+    incoming: ["INCOMING", () => player.incoming.length]
+  };
+  const MODE_INFO = {
+    cheese: { title: "100 LINE CHEESE", kicker: "SINGLEPLAYER / 100L CHEESE", objective: "DIG THROUGH THE CHEESE · CLEAR 100 LINES" },
+    sprint: { title: "40 LINE SPRINT", kicker: "SINGLEPLAYER / 40L SPRINT", objective: "CLEAR 40 LINES AS FAST AS POSSIBLE" },
+    blitz: { title: "2 MIN BLITZ", kicker: "SINGLEPLAYER / 2 MIN BLITZ", objective: "SCORE AS MUCH AS POSSIBLE IN 2 MINUTES" },
+    botplay: { title: "BOTPLAY", kicker: "SINGLEPLAYER / BOTPLAY", objective: "TOP OUT YOUR 1V1 OPPONENT" }
+  };
+  const BOT_TIERS = [
+    null,
+    { rank: "D–D+", pace: 1550, noise: 4.8, holes: 4.5, height: 0.45 },
+    { rank: "C−–C", pace: 1250, noise: 3.2, holes: 5.0, height: 0.55 },
+    { rank: "LOW B", pace: 930, noise: 1.8, holes: 5.8, height: 0.66 },
+    { rank: "A", pace: 640, noise: 0.75, holes: 6.2, height: 0.78 },
+    { rank: "S+", pace: 430, noise: 0.08, holes: 6.8, height: 0.95 }
+  ];
+  try {
+    const savedStats = JSON.parse(localStorage.getItem("stacklab-visible-stats") || "null");
+    if (Array.isArray(savedStats)) selectedStats = savedStats.filter((key) => Object.prototype.hasOwnProperty.call({
+      score:1,lines:1,time:1,level:1,combo:1,b2b:1,pieces:1,apm:1,attack:1,incoming:1
+    }, key));
+  } catch (_) { /* use defaults */ }
   let lastFrame = 0, gravityClock = 0, softClock = 0, lockClock = 0, lockResets = 0;
   let shift = { dir: 0, elapsed: 0, repeat: 0, instantDone: false };
   let held = new Set();
@@ -275,9 +327,11 @@
     if (state.queue.length < 7) state.queue.push(...emptyBag());
     return makePiece(state.queue.shift());
   }
-  function createBot(index, name, difficulty, pace) {
+  function createBot(index, name, difficulty, pace, level = 3) {
+    const tier = BOT_TIERS[level] || BOT_TIERS[3];
     const state = {
-      index, name, difficulty, pace, clock: 500 + Math.random() * 400,
+      index, name, difficulty, level, rank: tier.rank,
+      pace, clock: 650, noise: tier.noise, holeWeight: tier.holes, heightWeight: tier.height,
       board: makeBoard(), queue: newQueue(), current: null, combo: -1, b2b: 0,
       incoming: [], incomingClock: 1000, lines: 0, sent: 0, alive: true,
       pieces: 0, score: 0
@@ -285,16 +339,60 @@
     state.current = takeNext(state);
     return state;
   }
+  function showPage(pageId) {
+    currentPage = pageId;
+    document.querySelectorAll(".page").forEach((page) => page.classList.toggle("hidden", page.id !== pageId));
+    $("siteHeader").classList.toggle("game-header", pageId === "gamePage");
+    document.body.classList.toggle("in-game", pageId === "gamePage");
+    $("appRoot").dataset.page = pageId;
+    window.scrollTo(0, 0);
+  }
+  function formatTime(ms) {
+    const safe = Math.max(0, ms);
+    const minutes = Math.floor(safe / 60000);
+    const seconds = Math.floor((safe % 60000) / 1000);
+    const centiseconds = Math.floor((safe % 1000) / 10);
+    return String(minutes).padStart(2,"0") + ":" + String(seconds).padStart(2,"0") + "." + String(centiseconds).padStart(2,"0");
+  }
+  function updateModeScreen() {
+    document.querySelectorAll(".mode-card").forEach((card) => card.classList.toggle("selected", card.dataset.mode === selectedMode));
+    $("botLevelPicker").classList.toggle("hidden", selectedMode !== "botplay");
+    $("modeHint").textContent = selectedMode === "cheese" ? "100 lines · dig through garbage"
+      : selectedMode === "sprint" ? "40 lines · fastest time wins"
+      : selectedMode === "blitz" ? "2 minutes · highest score wins"
+      : "1v1 · " + BOT_TIERS[selectedBotLevel].rank + " ranked bot";
+    $("botLevelDescription").textContent = "LEVEL " + selectedBotLevel + " · " + BOT_TIERS[selectedBotLevel].rank + " RANK";
+    document.querySelectorAll("[data-bot-level]").forEach((button) =>
+      button.classList.toggle("selected", Number(button.dataset.botLevel) === selectedBotLevel));
+  }
+  function seedCheese(board) {
+    // A deliberately uneven stack of single-hole garbage for the dig challenge.
+    let previousHole = Math.floor(Math.random() * W);
+    for (let y = H - 10; y < H; y++) {
+      const row = Array(W).fill("G");
+      let hole = Math.floor(Math.random() * W);
+      if (Math.random() < 0.7) hole = Math.max(0, Math.min(W - 1, previousHole + (Math.random() < 0.5 ? -1 : 1)));
+      row[hole] = null;
+      if (Math.random() < 0.23) {
+        let second = Math.floor(Math.random() * W);
+        if (second === hole) second = (second + 4) % W;
+        row[second] = null;
+      }
+      board[y] = row;
+      previousHole = hole;
+    }
+  }
   function resetMatch(autostart) {
     player = createPlayer();
-    bots = [
-      createBot(0, "PIXEL", "CASUAL", 1320),
-      createBot(1, "GLITCH", "STANDARD", 920),
-      createBot(2, "OVERDRIVE", "EXPERT", 680)
-    ];
+    if (currentMode === "cheese") seedCheese(player.board);
+    bots = currentMode === "botplay"
+      ? [createBot(0, "STACK BOT", "LEVEL " + selectedBotLevel, BOT_TIERS[selectedBotLevel].pace, selectedBotLevel)]
+      : [];
     started = Boolean(autostart);
     paused = false;
     ended = false;
+    runElapsed = 0;
+    blitzRemaining = 120000;
     gravityClock = softClock = lockClock = 0;
     lockResets = 0;
     shift = { dir: 0, elapsed: 0, repeat: 0, instantDone: false };
@@ -304,47 +402,78 @@
     shake = 0;
     apmWindow = [];
     targetCursor = 0;
-    $("startOverlay").classList.toggle("hidden", started);
     $("pauseOverlay").classList.add("hidden");
-    $("startButton").innerHTML = "START MATCH <span>→</span>";
-    $("battleStatus").textContent = started ? "MATCH IN PROGRESS" : "WAITING FOR MATCH";
-    $("combatLog").innerHTML = '<p class="log-muted">Waiting for the first drop...</p>';
+    $("resultOverlay").classList.add("hidden");
+    $("battleStatus").textContent = started ? "RUN IN PROGRESS" : "READY";
+    $("gameModeTitle").textContent = MODE_INFO[currentMode].title;
+    $("gameModeKicker").textContent = currentMode === "botplay"
+      ? MODE_INFO.botplay.kicker + " / LEVEL " + selectedBotLevel + " · " + BOT_TIERS[selectedBotLevel].rank
+      : MODE_INFO[currentMode].kicker;
+    $("runObjective").textContent = MODE_INFO[currentMode].objective;
+    $("botInfo").classList.toggle("hidden", currentMode !== "botplay");
+    if (currentMode === "botplay" && bots[0]) {
+      $("botRankChip").textContent = "LV. " + selectedBotLevel;
+      $("botNameInGame").textContent = bots[0].name;
+      $("botRankInGame").textContent = bots[0].rank + " RANK";
+    }
+    if (autostart) showPage("gamePage");
     renderAll();
-    updateUI();
   }
-  function endMatch(won) {
+  function endMatch(won, reason = "") {
+    if (ended) return;
     ended = true;
     started = false;
     paused = false;
+    held.clear();
+    shift.dir = 0;
     $("pauseOverlay").classList.add("hidden");
-    $("startOverlay").classList.remove("hidden");
-    const overlay = $("startOverlay");
-    overlay.querySelector(".section-kicker").textContent = won ? "MATCH COMPLETE" : "FIELD LOST";
-    overlay.querySelector("h2").innerHTML = won ? "CLEAN<br><em>SWEEP.</em>" : "STACK<br><em>OVER.</em>";
-    overlay.querySelector(".overlay-copy").textContent = won
-      ? "Every opponent has topped out. Nice stacking."
-      : "Your field topped out. Adjust your handling and run it back.";
-    $("startButton").innerHTML = "PLAY AGAIN <span>→</span>";
-    $("battleStatus").textContent = won ? "VICTORY" : "DEFEAT";
-    logEvent(won ? "You cleared the arena." : "Your field topped out.", won ? "cyan" : "danger");
+    $("resultOverlay").classList.remove("hidden");
+    const title = currentMode === "blitz" ? (won ? "TIME'S UP." : "STACK OVER.")
+      : won ? (currentMode === "botplay" ? "BOT DEFEATED." : "RUN COMPLETE.") : "STACK OVER.";
+    $("resultKicker").textContent = won ? "CHALLENGE COMPLETE" : "RUN ENDED";
+    $("resultTitle").textContent = title;
+    const summary = currentMode === "sprint" ? "40 lines cleared in " + formatTime(runElapsed) + "."
+      : currentMode === "cheese" ? "You dug through " + player.lines + " lines of cheese."
+      : currentMode === "blitz" ? "The clock ran out. You scored " + player.score.toLocaleString() + " points."
+      : (won ? "You beat the level " + selectedBotLevel + " " + BOT_TIERS[selectedBotLevel].rank + " bot." : "The level " + selectedBotLevel + " bot won this round.");
+    $("resultSummary").textContent = reason || summary;
+    const results = [
+      ["SCORE", player.score.toLocaleString()],
+      ["LINES", player.lines],
+      ["TIME", formatTime(runElapsed)],
+      [currentMode === "botplay" ? "BOT LINES" : "PIECES", currentMode === "botplay" ? (bots[0]?.lines || 0) : player.pieces]
+    ];
+    $("resultStats").textContent = "";
+    for (const [label,value] of results) {
+      const cell = document.createElement("div");
+      const key = document.createElement("span"); key.textContent = label;
+      const val = document.createElement("b"); val.textContent = value;
+      cell.append(key,val); $("resultStats").append(cell);
+    }
+    renderAll();
   }
   function startMatch() {
     if (ended || !player || !player.alive) resetMatch(true);
     else {
       started = true;
       paused = false;
-      $("battleStatus").textContent = "MATCH IN PROGRESS";
+      showPage("gamePage");
+      $("battleStatus").textContent = "RUN IN PROGRESS";
     }
-    $("startOverlay").classList.add("hidden");
     $("pauseOverlay").classList.add("hidden");
+    $("resultOverlay").classList.add("hidden");
     renderAll();
   }
+  function beginSelectedMode() {
+    currentMode = selectedMode;
+    resetMatch(true);
+  }
   function togglePause() {
-    if (!started || ended) return;
+    if (!started || ended || currentPage !== "gamePage") return;
     paused = !paused;
     $("pauseOverlay").classList.toggle("hidden", !paused);
-    $("pauseButton").textContent = paused ? "▶" : "Ⅱ";
-    $("battleStatus").textContent = paused ? "PAUSED" : "MATCH IN PROGRESS";
+    $("battleStatus").textContent = paused ? "PAUSED" : "RUN IN PROGRESS";
+    if (paused) { held.clear(); shift.dir = 0; }
   }
 
   function rotatePlayer(dir) {
@@ -510,7 +639,15 @@
     return Math.max(45, 950 * Math.pow(0.82, Math.max(0, level - 1)));
   }
   function updatePlayer(dt) {
-    if (!player.alive) return;
+    if (!player.alive || ended) return;
+    runElapsed += dt;
+    if (currentMode === "blitz") {
+      blitzRemaining = Math.max(0, blitzRemaining - dt);
+      if (blitzRemaining <= 0) {
+        endMatch(true, "Two minutes are up. Final score: " + player.score.toLocaleString() + ".");
+        return;
+      }
+    }
     updateShift(dt);
     processSoftDrop(dt);
     if (softDropHeld()) {
@@ -613,7 +750,9 @@
     lockClock = gravityClock = softClock = 0;
     lockResets = 0;
     player.current.lastRotate = false;
-    if (collides(player.board, player.current)) playerTopOut();
+    if (!ended && currentMode === "sprint" && player.lines >= 40) endMatch(true, "40 lines cleared in " + formatTime(runElapsed) + ".");
+    else if (!ended && currentMode === "cheese" && player.lines >= 100) endMatch(true, "100 lines cleared. You conquered the cheese stack.");
+    else if (collides(player.board, player.current)) playerTopOut();
     updateUI();
   }
   function actionName(spin, lines, attack) {
@@ -693,27 +832,61 @@
     const maxHeight = Math.max(...heights);
     return { holes, aggregate, bump, maxHeight };
   }
-  function bestBotPlacement(bot) {
-    const piece = bot.current;
-    let best = null, bestValue = -Infinity;
+  function botBoardValue(board, bot) {
+    const metrics = evaluateBoard(board);
+    const clearBonus = 0;
+    return -metrics.holes * bot.holeWeight
+      - metrics.aggregate * 0.43
+      - metrics.bump * 0.34
+      - metrics.maxHeight * bot.heightWeight
+      + clearBonus;
+  }
+  function enumerateBotPlacements(board, type) {
+    const piece = makePiece(type);
+    const candidates = [];
+    const seen = new Set();
     for (let rot = 0; rot < 4; rot++) {
+      const shapeKey = SHAPES[type][rot].map((c) => c.join(",")).sort().join(";");
+      if (seen.has(shapeKey)) continue;
+      seen.add(shapeKey);
       for (let x = -2; x < W; x++) {
         let y = 0;
-        if (collides(bot.board, piece, x, y, rot)) continue;
-        while (!collides(bot.board, piece, x, y + 1, rot)) y++;
-        const trial = cloneBoard(bot.board);
-        const placed = { ...piece, x, y, rot };
-        if (!mergePiece(trial, placed)) continue;
+        if (collides(board, piece, x, y, rot)) continue;
+        while (!collides(board, piece, x, y + 1, rot)) y++;
+        const trial = cloneBoard(board);
+        if (!mergePiece(trial, { ...piece, x, y, rot })) continue;
         const lines = clearLines(trial);
-        const metrics = evaluateBoard(trial);
-        let value = -metrics.holes * 5.8 - metrics.aggregate * 0.49 - metrics.bump * 0.38 - metrics.maxHeight * 0.7 + lines * [0,2.1,5.0,8.5,15.2][lines];
-        if (lines === 4) value += 3;
-        if (rot === 0) value += 0.1;
-        value += (Math.random() - 0.5) * (bot.index === 0 ? 2.2 : bot.index === 1 ? 0.8 : 0.3);
-        if (value > bestValue) {
-          bestValue = value;
-          best = { x, y, rot, board: trial, lines };
+        candidates.push({ board: trial, lines, x, y, rot });
+      }
+    }
+    return candidates;
+  }
+  function bestBotPlacement(bot) {
+    const placements = enumerateBotPlacements(bot.board, bot.current.type);
+    let best = null, bestValue = -Infinity;
+    const tier = BOT_TIERS[bot.level] || BOT_TIERS[3];
+    for (const candidate of placements) {
+      let value = botBoardValue(candidate.board, bot);
+      value += candidate.lines * [0,2.1,5.0,8.5,15.2][candidate.lines];
+      if (candidate.lines === 4) value += 3.5;
+      if (candidate.rot === 0) value += 0.08;
+      // The highest tier plans one additional piece ahead instead of only
+      // taking the locally best landing spot.
+      if (bot.level >= 5 && bot.queue.length) {
+        const nextCandidates = enumerateBotPlacements(candidate.board, bot.queue[0]);
+        let lookahead = -Infinity;
+        for (const next of nextCandidates) {
+          let nextValue = botBoardValue(next.board, bot);
+          nextValue += next.lines * [0,2.1,5.0,8.5,15.2][next.lines];
+          if (next.lines === 4) nextValue += 3.5;
+          if (nextValue > lookahead) lookahead = nextValue;
         }
+        if (Number.isFinite(lookahead)) value += lookahead * 0.58;
+      }
+      value += (Math.random() - 0.5) * tier.noise;
+      if (value > bestValue) {
+        bestValue = value;
+        best = candidate;
       }
     }
     return best;
@@ -740,6 +913,7 @@
     if (collides(bot.board, bot.current)) bot.alive = false;
   }
   function updateBots(dt) {
+    if (currentMode !== "botplay" || !bots.length || ended) return;
     for (const bot of bots) {
       if (!bot.alive) continue;
       processGarbage(bot, dt, false);
@@ -893,58 +1067,66 @@
       }
     }
   }
+  let renderedStatsKey = "";
+  function renderRunStats() {
+    const container = $("runStats");
+    const key = selectedStats.join("|");
+    if (container.dataset.statsKey !== key) {
+      container.textContent = "";
+      for (const stat of selectedStats) {
+        if (!STAT_INFO[stat]) continue;
+        const pill = document.createElement("div");
+        pill.className = "stat-pill";
+        pill.dataset.stat = stat;
+        const label = document.createElement("span");
+        label.textContent = STAT_INFO[stat][0];
+        const value = document.createElement("strong");
+        value.textContent = "—";
+        pill.append(label,value);
+        container.append(pill);
+      }
+      container.dataset.statsKey = key;
+    }
+    for (const pill of container.querySelectorAll("[data-stat]")) {
+      const data = STAT_INFO[pill.dataset.stat];
+      if (data) pill.querySelector("strong").textContent = String(data[1]());
+    }
+  }
   function renderAll() {
     if (!player) return;
     const frame = $("boardFrame");
-    frame.style.transform = shake > 0 ? "translate(" + ((Math.random() - .5) * shake) + "px," + ((Math.random() - .5) * shake) + "px)" : "";
+    if (frame) frame.style.transform = shake > 0
+      ? "translate(" + ((Math.random() - .5) * shake) + "px," + ((Math.random() - .5) * shake) + "px)" : "";
     drawBoard($("playerBoard"), player.board, player.current, false);
-    for (const bot of bots) drawBoard($("botBoard" + bot.index), bot.board, null, true);
+    if (bots.length) drawBoard($("botBoard0"), bots[0].board, null, true);
     renderPreviews();
     updateUI();
   }
   function updateUI() {
     if (!player) return;
-    $("scoreValue").textContent = player.score.toLocaleString();
-    $("linesValue").textContent = player.lines;
-    $("levelValue").textContent = player.level;
-    $("comboValue").textContent = player.combo < 0 ? "—" : player.combo;
-    $("b2bValue").textContent = player.b2b ? "×" + player.b2b : "—";
-    $("incomingValue").textContent = player.incoming.length;
-    $("incomingBar").style.width = Math.min(100, player.incoming.length * 10) + "%";
-    $("incomingNote").textContent = player.incoming.length ? "GARBAGE INCOMING  ·  " + player.incoming.length + " LINES" : "NO INCOMING ATTACKS";
-    $("attackValue").textContent = player.sent;
-    $("piecesValue").textContent = player.pieces;
-    const now = Date.now();
-    apmWindow = apmWindow.filter((time) => now - time < 60000);
-    $("apmValue").textContent = apmWindow.length;
-    $("holdHint").textContent = player.hold ? "READY TO SWAP" : "EMPTY — TAP C TO HOLD";
-    $("lastMove").textContent = player.lastMove;
-    $("spinValue").textContent = player.spin;
+    renderRunStats();
+    $("holdHint").textContent = player.hold ? "READY TO SWAP" : "EMPTY";
     $("speedLabel").textContent = (950 / gravityInterval(player.level)).toFixed(1) + "× GRAVITY";
-    $("pauseButton").textContent = paused ? "▶" : "Ⅱ";
-    for (const bot of bots) {
-      const i = bot.index;
-      $("botLines" + i).textContent = bot.lines;
-      $("botAttack" + i).textContent = bot.sent;
-      $("botIncoming" + i).textContent = bot.incoming.length;
-      $("botHealth" + i).style.width = Math.max(0, 100 - evaluateBoard(bot.board).maxHeight * 5) + "%";
-      $("botState" + i).textContent = !bot.alive ? "OUT" : (started ? "ACTIVE" : "IDLE");
-      $("botState" + i).classList.toggle("active", bot.alive && started);
-      $("botState" + i).classList.toggle("out", !bot.alive);
-      const card = document.querySelector('.opponent-card[data-bot="' + i + '"]');
-      card.classList.toggle("dead", !bot.alive);
-      card.classList.toggle("targeted", bot.alive && bot.incoming.length > 0);
+    $("pauseButton").innerHTML = paused ? "▶ <span>RESUME</span>" : "Ⅱ <span>PAUSE</span>";
+    $("battleStatus").textContent = ended ? "RUN COMPLETE" : paused ? "PAUSED" : started ? "RUN IN PROGRESS" : "READY";
+    if (currentMode === "sprint") $("runObjective").textContent = "CLEAR " + Math.max(0, 40 - player.lines) + " MORE LINES";
+    else if (currentMode === "cheese") $("runObjective").textContent = "DIG " + Math.max(0, 100 - player.lines) + " MORE LINES";
+    else if (currentMode === "blitz") $("runObjective").textContent = "TIME LEFT · " + formatTime(blitzRemaining);
+    else $("runObjective").textContent = bots[0]?.alive ? "OUTSTACK THE " + (bots[0]?.rank || "BOT") + " BOT" : "OPPONENT TOPPED OUT";
+    if (bots.length) {
+      const bot = bots[0];
+      $("botLines0").textContent = bot.lines;
+      $("botAttack0").textContent = bot.sent;
+      $("botState0").textContent = !bot.alive ? "TOPPED OUT" : started ? "ACTIVE" : "READY";
+      $("botRankChip").textContent = "LV. " + selectedBotLevel;
+      $("botRankInGame").textContent = bot.rank + " RANK";
     }
   }
   function logEvent(message, tone) {
-    const log = $("combatLog");
-    const p = document.createElement("p");
-    if (tone === "cyan") p.style.color = "#69dfd3";
-    if (tone === "danger") p.style.color = "#ff829b";
-    if (tone === "muted") p.style.color = "#8497b1";
-    p.textContent = "› " + message;
-    log.prepend(p);
-    while (log.children.length > 6) log.removeChild(log.lastChild);
+    // The playfield stays deliberately uncluttered; keep the latest event
+    // in the status line rather than adding a combat feed to the game screen.
+    const status = $("battleStatus");
+    if (status && started && !paused) status.textContent = message.toUpperCase();
   }
 
   function loop(timestamp) {
@@ -980,10 +1162,68 @@
     try { localStorage.setItem("stacklab-settings", JSON.stringify(settings)); } catch (_) {}
     updateSliderUI();
   }
+  function renderStatsSettings() {
+    document.querySelectorAll("#statOptions input").forEach((input) => {
+      input.checked = selectedStats.includes(input.value);
+    });
+    renderRunStats();
+  }
+  function saveStatsSettings() {
+    selectedStats = [...document.querySelectorAll("#statOptions input:checked")].map((input) => input.value);
+    try { localStorage.setItem("stacklab-visible-stats", JSON.stringify(selectedStats)); } catch (_) {}
+    renderRunStats();
+  }
+  function leaveToMenu() {
+    started = false;
+    paused = false;
+    held.clear();
+    shift.dir = 0;
+    $("pauseOverlay").classList.add("hidden");
+    $("resultOverlay").classList.add("hidden");
+    showPage("homePage");
+  }
+  function openSettings() {
+    showPage("settingsPage");
+    updateSliderUI();
+    renderKeybinds();
+    renderStatsSettings();
+  }
+  $("openSingleplayer").addEventListener("click", () => {
+    updateModeScreen();
+    showPage("singleplayerPage");
+  });
+  $("openSettings").addEventListener("click", openSettings);
+  $("brandHome").addEventListener("click", (event) => { event.preventDefault(); leaveToMenu(); });
+  document.querySelectorAll("[data-page]").forEach((button) => {
+    button.addEventListener("click", () => showPage(button.dataset.page));
+  });
+  document.querySelectorAll(".mode-card").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedMode = button.dataset.mode;
+      updateModeScreen();
+    });
+  });
+  document.querySelectorAll("[data-bot-level]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedBotLevel = Number(button.dataset.botLevel);
+      updateModeScreen();
+    });
+  });
+  $("startSelectedMode").addEventListener("click", beginSelectedMode);
+  $("gameMenuButton").addEventListener("click", leaveToMenu);
+  $("restartButton").addEventListener("click", () => resetMatch(true));
+  $("pauseButton").addEventListener("click", togglePause);
+  $("resumeButton").addEventListener("click", togglePause);
+  $("pauseRestartButton").addEventListener("click", () => resetMatch(true));
+  $("pauseMenuButton").addEventListener("click", leaveToMenu);
+  $("retryGame").addEventListener("click", () => resetMatch(true));
+  $("resultMenuButton").addEventListener("click", leaveToMenu);
+
   $("dasSlider").addEventListener("input", (event) => { settings.das = Number(event.target.value); saveSettings(); });
   $("arrSlider").addEventListener("input", (event) => { settings.arr = Number(event.target.value); saveSettings(); });
   $("sdfSlider").addEventListener("input", (event) => { settings.sdf = Number(event.target.value); saveSettings(); });
   $("dasCancel").addEventListener("change", (event) => { settings.dasCancel = event.target.checked; saveSettings(); });
+  document.querySelectorAll("#statOptions input").forEach((input) => input.addEventListener("change", saveStatsSettings));
   $("themeSelect").addEventListener("change", (event) => {
     document.body.dataset.theme = event.target.value;
     try { localStorage.setItem("stacklab-theme", event.target.value); } catch (_) {}
@@ -996,9 +1236,6 @@
       $("themeSelect").value = theme;
     }
   } catch (_) {}
-  $("startButton").addEventListener("click", startMatch);
-  $("pauseButton").addEventListener("click", togglePause);
-  $("restartButton").addEventListener("click", () => resetMatch(true));
   $("editKeybinds").addEventListener("click", openKeybindEditor);
   $("closeKeybinds").addEventListener("click", closeKeybindEditor);
   $("doneKeybinds").addEventListener("click", closeKeybindEditor);
@@ -1045,10 +1282,15 @@
     if (action) event.preventDefault();
     if (!action) return;
     if (event.repeat && !["left","right","down"].includes(action)) return;
-    if (action === "start" && !started) { startMatch(); return; }
+    if (action === "start" && !started) {
+      if (currentPage === "homePage") { updateModeScreen(); showPage("singleplayerPage"); }
+      else if (currentPage === "singleplayerPage") beginSelectedMode();
+      else if (currentPage === "gamePage" && ended) resetMatch(true);
+      return;
+    }
     if (action === "pause") { togglePause(); return; }
-    if (action === "restart") { resetMatch(true); return; }
-    if (!started || paused) return;
+    if (action === "restart" && currentPage === "gamePage") { resetMatch(true); return; }
+    if (currentPage !== "gamePage" || !started || paused) return;
     if (action === "left" && !event.repeat) beginShift(-1);
     else if (action === "right" && !event.repeat) beginShift(1);
     else if (action === "down") held.add("down");
@@ -1078,7 +1320,7 @@
     };
     button.addEventListener("pointerdown", (event) => {
       event.preventDefault();
-      if (!started) { startMatch(); return; }
+      if (!started || currentPage !== "gamePage") return;
       if (action === "left") beginShift(-1);
       else if (action === "right") beginShift(1);
       else if (action === "down") held.add("down");
@@ -1096,6 +1338,9 @@
 
   updateSliderUI();
   renderKeybinds();
+  updateModeScreen();
   resetMatch(false);
+  renderStatsSettings();
+  showPage("homePage");
   requestAnimationFrame(loop);
 })();
