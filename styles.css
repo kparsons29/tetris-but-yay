@@ -409,3 +409,244 @@ kbd{min-width:22px;height:21px;padding:0 5px;display:inline-grid;place-items:cen
   .field-group .next-widget #nextCanvas,.field-group .next-widget #botNextCanvas{height:210px;object-fit:contain;object-position:top center}
   .botplay-layout .widget-heading{font-size:7px;letter-spacing:.05em}
 }
+
+
+/* FINAL gameplay layout override.
+   The game markup now groups each complete field into one .field-group.
+   Override the older three-column #playLayout grid so a whole field spans
+   the row, rather than being squeezed into the old left-hand hold column. */
+.in-game #playLayout {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-auto-flow: row;
+  align-content: center;
+  justify-items: center;
+  align-items: center;
+  width: 100%;
+  max-width: 1440px;
+  height: 100%;
+  min-height: 0;
+  margin: 0 auto;
+  gap: 0;
+}
+
+.in-game #playLayout > .field-group {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(145px, 185px) minmax(0, min(440px, calc((100dvh - 170px) / 2))) minmax(145px, 185px);
+  justify-content: center;
+  align-items: stretch;
+  gap: clamp(14px, 2vw, 24px);
+  width: 100%;
+  max-width: 1080px;
+  min-width: 0;
+  height: auto;
+  margin: 0 auto;
+}
+
+.in-game #playLayout .play-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+}
+
+.in-game #playLayout .field-column {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+}
+
+.in-game #playLayout .board-frame {
+  flex: 0 0 auto;
+  width: 100%;
+  height: auto;
+  max-height: none;
+  aspect-ratio: 1 / 2;
+}
+
+.in-game #playLayout .next-side {
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.in-game #playLayout .run-stats,
+.in-game #playLayout #botStats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 5px;
+  width: 100%;
+  max-height: 48vh;
+  margin: 0;
+  padding-top: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.in-game #playLayout .run-stats .stat-pill,
+.in-game #playLayout #botStats .stat-pill {
+  min-width: 0;
+  width: 100%;
+  flex: initial;
+  padding: 7px 8px;
+}
+
+.in-game #playLayout #botStats {
+  display: grid;
+  flex-wrap: initial;
+}
+
+/* In versus, each complete field gets exactly half the available width. */
+.in-game #playLayout.botplay-layout {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  justify-items: stretch;
+  align-items: center;
+  align-content: center;
+  column-gap: clamp(12px, 1.8vw, 26px);
+  max-width: 1440px;
+}
+
+.in-game #playLayout.botplay-layout > .field-group {
+  grid-column: auto;
+  grid-template-columns: minmax(64px, .8fr) minmax(0, 2.4fr) minmax(74px, .9fr);
+  gap: clamp(6px, .9vw, 14px);
+  width: 100%;
+  max-width: none;
+}
+
+.in-game #playLayout.botplay-layout .field-column {
+  max-width: none;
+}
+
+.in-game #playLayout.botplay-layout .run-stats,
+.in-game #playLayout.botplay-layout #botStats {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Narrow screens: keep the board centred and put its side panels above it.
+   On phones, the two versus fields are stacked vertically instead of being
+   crushed into narrow columns. */
+@media (max-width: 760px) {
+  .in-game .game-page {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .in-game #playLayout,
+  .in-game #playLayout.botplay-layout {
+    flex: 0 0 auto;
+    grid-template-columns: minmax(0, 1fr) !important;
+    align-content: start;
+    justify-items: center;
+    height: auto;
+    min-height: 0;
+    gap: 18px;
+    padding-bottom: 12px;
+  }
+
+  .in-game #playLayout > .field-group,
+  .in-game #playLayout.botplay-layout > .field-group {
+    grid-column: 1;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 8px;
+    width: min(100%, 520px);
+    max-width: 520px;
+    height: auto;
+  }
+
+  .in-game #playLayout .hold-side {
+    grid-column: 1;
+    grid-row: 1;
+    height: auto;
+    overflow: visible;
+  }
+
+  .in-game #playLayout .field-column {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: min(100%, 340px, calc((100dvh - 285px) / 2));
+    max-width: 340px;
+    justify-self: center;
+  }
+
+  .in-game #playLayout .next-side {
+    grid-column: 2;
+    grid-row: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 7px;
+    height: auto;
+    overflow: visible;
+  }
+
+  .in-game #playLayout .next-widget {
+    grid-column: 1 / -1;
+  }
+
+  .in-game #playLayout .next-widget #nextCanvas,
+  .in-game #playLayout .next-widget #botNextCanvas {
+    width: 100%;
+    height: 135px;
+    max-height: none;
+    object-fit: contain;
+  }
+
+  .in-game #playLayout .clear-hud {
+    grid-column: 1;
+    min-width: 0;
+    gap: 5px;
+  }
+
+  .in-game #playLayout .run-stats,
+  .in-game #playLayout #botStats {
+    grid-column: 2;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: 130px;
+    overflow-y: auto;
+  }
+
+  .in-game #playLayout .run-stats .stat-pill,
+  .in-game #playLayout #botStats .stat-pill {
+    padding: 5px 6px;
+  }
+}
+
+@media (max-width: 420px) {
+  .in-game #playLayout > .field-group,
+  .in-game #playLayout.botplay-layout > .field-group {
+    width: 100%;
+    gap: 6px;
+  }
+
+  .in-game #playLayout .field-column {
+    width: min(100%, calc((100dvh - 285px) / 2));
+  }
+
+  .in-game #playLayout .play-widget {
+    padding: 7px 6px;
+  }
+
+  .in-game #playLayout .widget-heading {
+    font-size: 8px;
+    letter-spacing: .05em;
+  }
+
+  .in-game #playLayout .run-stats,
+  .in-game #playLayout #botStats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
