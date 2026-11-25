@@ -717,8 +717,7 @@
   }
 
   function isOccupied(board, x, y) {
-    if (x < 0 || x >= W || y >= H) return true;
-    if (y < 0) return false;
+    if (x < 0 || x >= W || y < 0 || y >= H) return true;
     return Boolean(board[y][x]);
   }
   function classifyTSpin(piece, board) {
@@ -737,15 +736,25 @@
   }
   // Non-T immobile spins use TETR.IO-style All-Spin behaviour:
   // they keep the normal clear attack value, but qualify as difficult clears.
+  function canMoveSpinPiece(board, piece, dx, dy) {
+    for (const [cx,cy] of SHAPES[piece.type][piece.rot]) {
+      const x = piece.x + cx + dx, y = piece.y + cy + dy;
+      // The spin test treats the edge of the field as a wall, including above
+      // the visible board. Normal movement still uses the game's spawn buffer.
+      if (x < 0 || x >= W || y < 0 || y >= H || board[y][x]) return false;
+    }
+    return true;
+  }
   function classifySpin(piece, board) {
-    // TETR.IO requires a grounded piece and rotation as the last action.
-    // T pieces use the standard three-corner test; other pieces use immobility.
-    if (!piece.lastRotate || !collides(board, piece, piece.x, piece.y + 1, piece.rot)) return "—";
+    // A spin only counts when the last action was a rotation and the piece is
+    // grounded. T pieces then use the 3-corner test; non-T pieces must be
+    // completely immobile in all four cardinal directions.
+    if (!piece.lastRotate || canMoveSpinPiece(board, piece, 0, 1)) return "—";
     if (piece.type === "T") return classifyTSpin(piece, board);
-    const canMove = !collides(board, piece, piece.x - 1, piece.y, piece.rot)
-      || !collides(board, piece, piece.x + 1, piece.y, piece.rot)
-      || !collides(board, piece, piece.x, piece.y - 1, piece.rot)
-      || !collides(board, piece, piece.x, piece.y + 1, piece.rot);
+    const canMove = canMoveSpinPiece(board, piece, -1, 0)
+      || canMoveSpinPiece(board, piece, 1, 0)
+      || canMoveSpinPiece(board, piece, 0, -1)
+      || canMoveSpinPiece(board, piece, 0, 1);
     return canMove ? "—" : "ALL-SPIN";
   }
   // Tetris 99-style base garbage and combo bonuses.
@@ -753,8 +762,9 @@
   const COMBO_ATTACK = [0,1,1,2,2,3,3,4,4,4,5];
   function attackFor(lines, spin, combo, b2bBonus) {
     let base = [0,0,1,2,4][lines] || 0;
-    if (spin === "T-SPIN" || spin === "ALL-SPIN") base = [0,2,4,6,0][lines] || 0;
+    if (spin === "T-SPIN") base = [0,2,4,6,0][lines] || 0;
     if (spin === "MINI T-SPIN") base = [0,0,1,0,0][lines] || 0;
+    // All-spins retain the game's normal line-clear attack value.
     const comboBonus = combo >= 0 ? COMBO_ATTACK[Math.min(combo, 10)] : 0;
     return Math.max(0, base + comboBonus + b2bBonus);
   }
@@ -763,8 +773,8 @@
     const full = [400,800,1200,1600,2600][lines] || 0;
     const mini = [100,200,400,800,1600][lines] || 0;
     let points = normal;
-    if (spin === "T-SPIN" || spin === "ALL-SPIN") points = full || 400;
-    else if (spin === "MINI T-SPIN") points = mini || 100;
+    if (spin === "T-SPIN") points = full || 400;
+    else if (spin === "MINI T-SPIN" || spin === "ALL-SPIN") points = mini || 100;
     if (b2b && lines > 0) points *= 1.5;
     if (allClear) points += 3500;
     return Math.floor(points * level);
@@ -991,8 +1001,8 @@
     const nextCombo = candidate.lines > 0 ? combo + 1 : -1;
     const attack = attackFor(candidate.lines,candidate.spin || "—",nextCombo,difficult ? b2b : 0);
     const clearValue = [0,1.5,5.5,10.5,17][candidate.lines] || 0;
-    const spinValue = candidate.spin === "T-SPIN" || candidate.spin === "ALL-SPIN" ? 8 :
-      candidate.spin === "MINI T-SPIN" ? 2.5 : 0;
+    const spinValue = candidate.spin === "T-SPIN" ? 8 :
+      candidate.spin === "MINI T-SPIN" || candidate.spin === "ALL-SPIN" ? 2.5 : 0;
     const allClear = candidate.lines > 0 && candidate.board.every((row) => row.every((cell) => !cell));
     const currentAPM = bot.sent / Math.max(runElapsed / 60000,0.1);
     const apmPressure = Math.max(0.75,Math.min(2.4,bot.targetAPM / Math.max(1,currentAPM)));
