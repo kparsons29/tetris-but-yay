@@ -212,6 +212,8 @@
       const el = $(id);
       if (el) el.textContent = keyLabel(keybinds[action]);
     }
+    const botHoldKey = $("botDisplayHold");
+    if (botHoldKey) botHoldKey.textContent = keyLabel(keybinds.hold);
     const summary = $("keybindSummary");
     if (summary) {
       summary.textContent = "";
