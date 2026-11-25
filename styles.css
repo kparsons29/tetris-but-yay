@@ -650,3 +650,26 @@ kbd{min-width:22px;height:21px;padding:0 5px;display:inline-grid;place-items:cen
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+
+/* Survival mode selection and difficulty picker. */
+.survival-art{background:radial-gradient(ellipse,rgba(255,173,115,.16),transparent 65%),#19151b}
+.survival-art>span{color:#ffc08c;text-shadow:0 0 22px rgba(255,173,115,.24)}
+.survival-art i{background:#ffad73}
+.survival-difficulty-picker{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-bottom:13px}
+.survival-difficulty-copy{display:flex;flex-direction:column;gap:5px;min-width:155px}
+.survival-difficulty-copy strong{font:10px var(--mono);color:var(--cyan)}
+.survival-difficulty-buttons{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:5px;flex:1;min-width:0}
+.survival-difficulty-buttons button{min-width:0;height:43px;padding:3px;border:1px solid var(--line2);border-radius:5px;background:#111c2b;color:#b8c9dc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer}
+.survival-difficulty-buttons button b{font:13px var(--mono)}
+.survival-difficulty-buttons button small{font:6px var(--mono);color:#7487a1;white-space:nowrap}
+.survival-difficulty-buttons button.selected{border-color:var(--cyan);background:rgba(79,225,209,.1);color:var(--cyan);box-shadow:inset 0 0 0 1px rgba(79,225,209,.12)}
+@media(max-width:900px){
+  .survival-difficulty-picker{align-items:flex-start;flex-direction:column}
+  .survival-difficulty-buttons{width:100%;flex:none}
+}
+@media(max-width:560px){
+  .survival-difficulty-buttons{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .survival-difficulty-buttons button{height:40px}
+  .survival-difficulty-buttons button small{font-size:7px}
+}
