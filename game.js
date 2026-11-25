@@ -1038,7 +1038,7 @@
       const right = x === W - 1 ? H : heights[x + 1];
       wells += Math.max(0, Math.min(left,right) - heights[x]);
     }
-    return { holes, aggregate, bump, maxHeight: Math.max(...heights), rowTransitions, coveredHoleDepth, wells };
+    return { holes, aggregate, bump, maxHeight: Math.max(...heights), rowTransitions, coveredHoleDepth, wells, heights };
   }
   function botBoardValue(board, bot) {
     const m = evaluateBoard(board);
@@ -1049,6 +1049,24 @@
       -m.rowTransitions * 0.16
       -m.maxHeight * bot.heightWeight
       -m.wells * 0.32;
+  }
+  function tetrisWellPotential(metrics) {
+    const heights = metrics.heights;
+    const depths = heights.map((height, x) => {
+      const left = x === 0 ? heights[1] : heights[x - 1];
+      const right = x === W - 1 ? heights[W - 2] : heights[x + 1];
+      return Math.max(0, Math.min(left, right) - height);
+    }).sort((a, b) => b - a);
+    const mainWell = Math.max(0, (depths[0] || 0) - 1);
+    const extraWells = depths.slice(1).filter((depth) => depth >= 2).length;
+    return mainWell * 4.2 - extraWells * 2.8;
+  }
+  function botStrategyFor(bot, stackHeight) {
+    if (bot.level <= 2) return "tetris";
+    if (bot.level === 3 || bot.level === 4) return stackHeight >= 12 ? "downstack" : "tetris";
+    if (stackHeight <= 7) return "spin";
+    if (stackHeight >= 14) return "downstack";
+    return "tetris";
   }
   function enumerateBotPlacements(board, type) {
     const piece = makePiece(type);
@@ -1065,7 +1083,9 @@
         const trial = cloneBoard(board);
         if (!mergePiece(trial, { ...piece, x, y, rot })) continue;
         const lines = clearLines(trial);
-        const rotated = { ...piece, x, y, rot, lastRotate: rot !== 0, kick: 0 };
+        // The bot plans the final orientation directly, so every T placement
+        // can be treated as a deliberate rotation when checking spin corners.
+        const rotated = { ...piece, x, y, rot, lastRotate: type === "T" || rot !== 0, kick: 0 };
         const spin = classifySpin(rotated, board);
         candidates.push({ board: trial, lines, x, y, rot, spin, drop: Math.max(0,y-piece.y) });
       }
@@ -1083,14 +1103,50 @@
     const currentAPM = bot.sent / Math.max(runElapsed / 60000,0.1);
     const apmPressure = Math.max(0.75,Math.min(2.4,bot.targetAPM / Math.max(1,currentAPM)));
     const attackWeight = bot.attackWeight * apmPressure * (1 + bot.targetAPP);
+    const currentMetrics = bot.strategyMetrics || evaluateBoard(bot.board);
+    const nextMetrics = evaluateBoard(candidate.board);
+    const stackDrop = Math.max(0, currentMetrics.maxHeight - nextMetrics.maxHeight);
+    const aggregateDrop = Math.max(0, currentMetrics.aggregate - nextMetrics.aggregate);
+    const strategy = bot.strategyMode || botStrategyFor(bot, currentMetrics.maxHeight);
+    let strategyBonus = 0;
+
+    if (strategy === "tetris") {
+      const tetrisFocus = bot.level <= 2 ? 1 : bot.level === 5 ? 0.95 : bot.level === 4 ? 0.78 : 0.72;
+      if (candidate.lines === 4) strategyBonus += bot.level <= 2 ? 112 : bot.level === 5 ? 88 : 62;
+      else if (candidate.lines > 0) strategyBonus -= candidate.lines * (bot.level <= 2 ? 8 : 3.5);
+      strategyBonus += tetrisWellPotential(nextMetrics) * (bot.level <= 2 ? 1.15 : 1.0) * tetrisFocus;
+      if (candidate.spin === "T-SPIN" && candidate.lines > 0 && bot.level <= 2) strategyBonus -= 17;
+      if (bot.level === 4 && bot.spinDoubleHunt && candidate.spin === "T-SPIN" && candidate.lines === 2) {
+        strategyBonus += 54;
+      }
+    } else if (strategy === "downstack") {
+      strategyBonus += candidate.lines * (bot.level === 5 ? 25 : 19);
+      strategyBonus += stackDrop * 8 + aggregateDrop * 0.24;
+      if (candidate.spin === "T-SPIN" && candidate.lines > 0) strategyBonus += bot.level === 5 ? 9 : 4;
+    } else if (strategy === "spin") {
+      if (candidate.spin === "T-SPIN") {
+        strategyBonus += candidate.lines === 3 ? 112
+          : candidate.lines === 2 ? 88
+          : candidate.lines === 1 ? 48 : 12;
+      } else if (candidate.lines === 4) {
+        strategyBonus += 32;
+      }
+      strategyBonus += tetrisWellPotential(nextMetrics) * 0.28;
+    }
+
     return botBoardValue(candidate.board,bot) + clearValue + spinValue
-      + attack * attackWeight * 3.1 + (allClear ? 35 : 0) - candidate.drop * 0.012;
+      + attack * attackWeight * 3.1 + strategyBonus + (allClear ? 35 : 0) - candidate.drop * 0.012;
   }
   function bestBotPlacement(bot) {
+    bot.strategyMetrics = evaluateBoard(bot.board);
+    bot.strategyMode = botStrategyFor(bot, bot.strategyMetrics.maxHeight);
+    // Level 4 only actively hunts T-spin doubles on some turns, preserving its
+    // stronger Tetris/downstack identity the rest of the time.
+    bot.spinDoubleHunt = bot.level === 4 && bot.strategyMode === "tetris" && Math.random() < 0.18;
     const placements = enumerateBotPlacements(bot.board,bot.current.type);
     if (!placements.length) return null;
     const tier = BOT_TIERS[bot.level] || BOT_TIERS[3];
-    const width = bot.level >= 5 ? 12 : bot.level >= 4 ? 9 : bot.level >= 3 ? 7 : 5;
+    const width = bot.level >= 5 ? 16 : bot.level >= 4 ? 10 : bot.level >= 3 ? 8 : 7;
     const ranked = placements.map((p) => ({p,value:botPlacementValue(p,bot)}))
       .sort((a,b) => b.value-a.value).slice(0,width);
     let best = ranked[0].p, bestValue = -Infinity;
