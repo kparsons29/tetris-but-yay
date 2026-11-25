@@ -383,9 +383,9 @@ kbd{min-width:22px;height:21px;padding:0 5px;display:inline-grid;place-items:cen
 .botplay-layout .field-group{grid-template-columns:minmax(76px,1fr) minmax(0,2.4fr) minmax(76px,1fr);gap:12px}
 .botplay-layout .play-side{min-width:0}
 .botplay-layout .play-widget{min-width:0}
-@media(max-width:1150px) and (min-width:761px){
+@media(max-width:1350px) and (min-width:761px){
   .botplay-layout{gap:12px}
-  .botplay-layout .field-group{grid-template-columns:minmax(62px,.8fr) minmax(0,2.2fr) minmax(62px,.8fr);gap:8px}
+  .botplay-layout .field-group{grid-template-columns:minmax(56px,.8fr) minmax(0,2.2fr) minmax(56px,.8fr);gap:8px}
   .botplay-layout .play-widget{padding:8px 6px}
   .botplay-layout .widget-heading{font-size:7px;letter-spacing:.06em}
   .botplay-layout .stat-pill{min-width:58px;padding:6px}
