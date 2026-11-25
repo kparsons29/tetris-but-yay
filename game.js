@@ -348,10 +348,13 @@
     return p;
   }
   function takeNext(state) {
-    // Never mix a partial bag with a replacement: refill only after all seven
-    // pieces from the previous bag have been dealt.
-    if (state.queue.length === 0) state.queue.push(...shuffledSevenBag());
-    return makePiece(state.queue.shift());
+    // The queue is made from complete shuffled seven-piece bags. Start with
+    // two bags, then append the next bag as soon as we enter the second one
+    // (six pieces remain after dealing its first piece). This keeps the five-
+    // piece preview populated without ever breaking 7-bag boundaries.
+    const type = state.queue.shift();
+    if (state.queue.length <= 6) state.queue.push(...shuffledSevenBag());
+    return makePiece(type);
   }
   function createBot(index, name, difficulty, pace, level = 3) {
     const tier = BOT_TIERS[level] || BOT_TIERS[3];
