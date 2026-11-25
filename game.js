@@ -282,13 +282,20 @@
   let currentMode = "sprint";
   let selectedMode = "sprint";
   let selectedBotLevel = 3;
+  let selectedSurvivalDifficulty = 1;
   let runElapsed = 0;
   let blitzRemaining = 120000;
+  let survivalRemaining = 60000;
+  let survivalCredit = 0;
+  let survivalPendingRows = 0;
+  let survivalTotalLines = 0;
+  let survivalApplyNextFrame = false;
+  let survivalLastHole = null;
   let selectedStats = ["score", "lines", "time", "pps"];
   const STAT_INFO = {
     score: ["SCORE", () => player.score.toLocaleString()],
     lines: ["LINES", () => player.lines],
-    time: ["TIME", () => formatTime(currentMode === "blitz" ? Math.max(0, blitzRemaining) : runElapsed)],
+    time: ["TIME", () => formatTime(currentMode === "blitz" ? Math.max(0, blitzRemaining) : currentMode === "survival" ? Math.max(0, survivalRemaining) : runElapsed)],
     level: ["LEVEL", () => player.level],
     combo: ["COMBO", () => player.combo < 0 ? "—" : player.combo + 1],
     b2b: ["B2B", () => player.b2b ? "×" + player.b2b : "—"],
@@ -296,14 +303,19 @@
     pps: ["PPS", () => (player.pieces / Math.max(runElapsed / 1000, 0.001)).toFixed(2)],
     apm: ["APM", () => { const now = Date.now(); apmWindow = apmWindow.filter((time) => now - time < 60000); return apmWindow.length; }],
     attack: ["ATTACK", () => player.sent],
-    incoming: ["INCOMING", () => player.incoming.length]
+    incoming: ["INCOMING", () => currentMode === "survival" ? survivalPendingRows : player.incoming.length]
   };
   const MODE_INFO = {
     cheese: { title: "100 LINE CHEESE", kicker: "SINGLEPLAYER / 100L CHEESE", objective: "DIG THROUGH THE CHEESE · CLEAR 100 LINES" },
     sprint: { title: "40 LINE SPRINT", kicker: "SINGLEPLAYER / 40L SPRINT", objective: "CLEAR 40 LINES AS FAST AS POSSIBLE" },
     blitz: { title: "2 MIN BLITZ", kicker: "SINGLEPLAYER / 2 MIN BLITZ", objective: "SCORE AS MUCH AS POSSIBLE IN 2 MINUTES" },
-    botplay: { title: "BOTPLAY", kicker: "SINGLEPLAYER / BOTPLAY", objective: "TOP OUT YOUR 1V1 OPPONENT" }
+    botplay: { title: "BOTPLAY", kicker: "SINGLEPLAYER / BOTPLAY", objective: "TOP OUT YOUR 1V1 OPPONENT" },
+    survival: { title: "SURVIVAL", kicker: "SINGLEPLAYER / SURVIVAL", objective: "SURVIVE FOR ONE MINUTE WITHOUT TOPPING OUT" }
   };
+  const SURVIVAL_LINES_PER_MINUTE = [0, 5, 10, 16, 25, 38, 55, 78, 108, 150, 210];
+  function survivalLinesPerMinute(difficulty = selectedSurvivalDifficulty) {
+    return SURVIVAL_LINES_PER_MINUTE[difficulty] || SURVIVAL_LINES_PER_MINUTE[1];
+  }
   // TETR.IO Tetra League rank averages (23 Aug 2026); paired tiers are blended.
   // PPS controls piece cadence; APM and APP shape each bot's attack preference.
   const BOT_TIERS = [
@@ -390,13 +402,18 @@
   function updateModeScreen() {
     document.querySelectorAll(".mode-card").forEach((card) => card.classList.toggle("selected", card.dataset.mode === selectedMode));
     $("botLevelPicker").classList.toggle("hidden", selectedMode !== "botplay");
+    $("survivalDifficultyPicker").classList.toggle("hidden", selectedMode !== "survival");
     $("modeHint").textContent = selectedMode === "cheese" ? "100 lines · dig through garbage"
       : selectedMode === "sprint" ? "40 lines · fastest time wins"
       : selectedMode === "blitz" ? "2 minutes · highest score wins"
+      : selectedMode === "survival" ? "1 minute · " + survivalLinesPerMinute() + " garbage lines / min"
       : "1v1 · " + BOT_TIERS[selectedBotLevel].rank + " ranked bot";
     $("botLevelDescription").textContent = "LEVEL " + selectedBotLevel + " · " + BOT_TIERS[selectedBotLevel].rank + " RANK";
     document.querySelectorAll("[data-bot-level]").forEach((button) =>
       button.classList.toggle("selected", Number(button.dataset.botLevel) === selectedBotLevel));
+    $("survivalDifficultyDescription").textContent = "LEVEL " + selectedSurvivalDifficulty + " · " + survivalLinesPerMinute() + " LINES / MIN";
+    document.querySelectorAll("[data-survival-difficulty]").forEach((button) =>
+      button.classList.toggle("selected", Number(button.dataset.survivalDifficulty) === selectedSurvivalDifficulty));
   }
   function seedCheese(board) {
     // A deliberately uneven stack of single-hole garbage for the dig challenge.
@@ -421,6 +438,12 @@
     ended = false;
     runElapsed = 0;
     blitzRemaining = 120000;
+    survivalRemaining = 60000;
+    survivalCredit = 0;
+    survivalPendingRows = 0;
+    survivalTotalLines = 0;
+    survivalApplyNextFrame = false;
+    survivalLastHole = null;
     gravityClock = softClock = lockClock = 0;
     lockResets = 0;
     shift = { dir: 0, elapsed: 0, repeat: 0, instantDone: false };
@@ -448,7 +471,9 @@
     $("gameModeTitle").textContent = MODE_INFO[currentMode].title;
     $("gameModeKicker").textContent = currentMode === "botplay"
       ? MODE_INFO.botplay.kicker + " / LEVEL " + selectedBotLevel + " · " + BOT_TIERS[selectedBotLevel].rank
-      : MODE_INFO[currentMode].kicker;
+      : currentMode === "survival"
+        ? MODE_INFO.survival.kicker + " / LEVEL " + selectedSurvivalDifficulty + " · " + survivalLinesPerMinute() + " LPM"
+        : MODE_INFO[currentMode].kicker;
     $("runObjective").textContent = MODE_INFO[currentMode].objective;
     $("opponentSide").classList.toggle("hidden", currentMode !== "botplay");
     $("playLayout").classList.toggle("botplay-layout",currentMode === "botplay");
@@ -469,19 +494,23 @@
     $("pauseOverlay").classList.add("hidden");
     $("resultOverlay").classList.remove("hidden");
     const title = currentMode === "blitz" ? (won ? "TIME'S UP." : "STACK OVER.")
+      : currentMode === "survival" ? (won ? "SURVIVED." : "STACK OVER.")
       : won ? (currentMode === "botplay" ? "BOT DEFEATED." : "RUN COMPLETE.") : "STACK OVER.";
     $("resultKicker").textContent = won ? "CHALLENGE COMPLETE" : "RUN ENDED";
     $("resultTitle").textContent = title;
     const summary = currentMode === "sprint" ? "40 lines cleared in " + formatTime(runElapsed) + "."
       : currentMode === "cheese" ? "You dug through " + player.lines + " lines of cheese."
       : currentMode === "blitz" ? "The clock ran out. You scored " + player.score.toLocaleString() + " points."
+      : currentMode === "survival" ? (won
+        ? "You survived one minute at difficulty " + selectedSurvivalDifficulty + "."
+        : "You survived " + formatTime(runElapsed) + " at difficulty " + selectedSurvivalDifficulty + " and received " + survivalTotalLines + " garbage lines.")
       : (won ? "You beat the level " + selectedBotLevel + " " + BOT_TIERS[selectedBotLevel].rank + " bot." : "The level " + selectedBotLevel + " bot won this round.");
     $("resultSummary").textContent = reason || summary;
     const results = [
       ["SCORE", player.score.toLocaleString()],
       ["LINES", player.lines],
       ["TIME", formatTime(runElapsed)],
-      [currentMode === "botplay" ? "BOT LINES" : "PIECES", currentMode === "botplay" ? (bots[0]?.lines || 0) : player.pieces]
+      [currentMode === "botplay" ? "BOT LINES" : currentMode === "survival" ? "LINES SENT" : "PIECES", currentMode === "botplay" ? (bots[0]?.lines || 0) : currentMode === "survival" ? survivalTotalLines : player.pieces]
     ];
     $("resultStats").textContent = "";
     for (const [label,value] of results) {
@@ -694,6 +723,19 @@
         endMatch(true, "Two minutes are up. Final score: " + player.score.toLocaleString() + ".");
         return;
       }
+    } else if (currentMode === "survival") {
+      survivalRemaining = Math.max(0, survivalRemaining - dt);
+      survivalCredit += dt * survivalLinesPerMinute() / 60000;
+      const generated = Math.floor(survivalCredit);
+      if (generated > 0) {
+        survivalPendingRows += generated;
+        survivalTotalLines += generated;
+        survivalCredit -= generated;
+      }
+      if (survivalRemaining <= 0) {
+        endMatch(true, "One minute survived. " + survivalTotalLines + " garbage lines generated.");
+        return;
+      }
     }
     updateShift(dt);
     processSoftDrop(dt);
@@ -812,11 +854,11 @@
     player.level = nextLevel;
     const unblockedAttack = cancelIncoming(player, attack);
     const cancelledAttack = player.lastCancelled || 0;
-    if (cleared > 0) {
+    if (cleared > 0 && currentMode !== "survival") {
       if (unblockedAttack > 0 || cancelledAttack === 0) showBoardPopup("attack", unblockedAttack);
       if (cancelledAttack > 0) showBoardPopup("cancel", cancelledAttack);
     }
-    if (unblockedAttack) sendPlayerAttack(unblockedAttack);
+    if (unblockedAttack && currentMode !== "survival") sendPlayerAttack(unblockedAttack);
     if (cleared) {
       lineFlash = 180;
       shake = Math.min(8, 2 + cleared * 1.4);
@@ -834,6 +876,7 @@
     if (!ended && currentMode === "sprint" && player.lines >= 40) endMatch(true, "40 lines cleared in " + formatTime(runElapsed) + ".");
     else if (!ended && currentMode === "cheese" && player.lines >= 100) endMatch(true, "100 lines cleared. You conquered the cheese stack.");
     else if (collides(player.board, player.current)) playerTopOut();
+    else if (!ended && currentMode === "survival") survivalApplyNextFrame = true;
     updateUI(true);
   }
   function clearLabelFor(lines, spin) {
@@ -917,6 +960,37 @@
       logEvent("GARBAGE RECEIVED  ·  " + state.incoming.length + " LEFT", "danger");
     }
   }
+  function applySurvivalBurst() {
+    if (currentMode !== "survival" || !player.alive || ended) return;
+    const amount = survivalPendingRows;
+    survivalPendingRows = 0;
+    if (amount <= 0) return;
+
+    let hole = Math.floor(Math.random() * W);
+    if (Number.isInteger(survivalLastHole)) {
+      while (hole === survivalLastHole) hole = Math.floor(Math.random() * W);
+    }
+    survivalLastHole = hole;
+
+    // A Survival packet is delivered atomically: every row is inserted on
+    // this frame and shares one clean garbage well, rather than rising over
+    // the normal timed garbage animation.
+    for (let i = 0; i < amount; i++) {
+      const removed = player.board.shift();
+      player.board.push(Array.from({ length: W }, (_, x) => x === hole ? null : "G"));
+      if (removed.some(Boolean)) {
+        playerTopOut();
+        return;
+      }
+    }
+
+    player.dirty = true;
+    shake = Math.max(shake, Math.min(11, 3 + amount));
+    spawnParticles(150, 560, Math.min(24, 7 + amount * 2), COLORS.G);
+    logEvent("GARBAGE BURST  ·  +" + amount + " LINES", "danger");
+    updateUI(true);
+  }
+
   function sendPlayerAttack(amount) {
     const aliveBots = bots.filter((bot) => bot.alive);
     if (!aliveBots.length || amount <= 0) return;
@@ -1385,17 +1459,21 @@
       $("botState0").textContent = !bot.alive ? "TOPPED OUT" : started ? "RUN IN PROGRESS" : "READY";
       $("botRunObjective").textContent = "LEVEL " + selectedBotLevel + " · " + bot.rank;
     }
-    $("speedLabel").textContent = (950 / gravityInterval(player.level)).toFixed(1) + "× GRAVITY";
+    $("speedLabel").textContent = currentMode === "survival"
+      ? survivalLinesPerMinute() + " LINES / MIN"
+      : (950 / gravityInterval(player.level)).toFixed(1) + "× GRAVITY";
     $("pauseButton").innerHTML = paused ? "▶ <span>RESUME</span>" : "Ⅱ <span>PAUSE</span>";
     $("battleStatus").textContent = ended ? "RUN COMPLETE" : paused ? "PAUSED" : started ? "RUN IN PROGRESS" : "READY";
     if (currentMode === "sprint") $("runObjective").textContent = "CLEAR " + Math.max(0, 40 - player.lines) + " MORE LINES";
     else if (currentMode === "cheese") $("runObjective").textContent = "DIG " + Math.max(0, 100 - player.lines) + " MORE LINES";
     else if (currentMode === "blitz") $("runObjective").textContent = "TIME LEFT · " + formatTime(blitzRemaining);
+    else if (currentMode === "survival") $("runObjective").textContent = "SURVIVE · " + formatTime(survivalRemaining);
     else $("runObjective").textContent = bots[0]?.alive ? "OUTSTACK THE " + (bots[0]?.rank || "BOT") + " BOT" : "OPPONENT TOPPED OUT";
     $("boardObjective").textContent = currentMode === "sprint" ? String(Math.max(0,40-player.lines))
       : currentMode === "cheese" ? String(Math.max(0,100-player.lines))
-      : currentMode === "blitz" ? formatTime(blitzRemaining).slice(0,5) : "";
-    $("boardObjective").dataset.label = currentMode === "blitz" ? "TIME LEFT" : "LINES LEFT";
+      : currentMode === "blitz" ? formatTime(blitzRemaining).slice(0,5)
+      : currentMode === "survival" ? formatTime(survivalRemaining).slice(0,5) : "";
+    $("boardObjective").dataset.label = currentMode === "blitz" || currentMode === "survival" ? "TIME LEFT" : "LINES LEFT";
     $("boardObjective").classList.toggle("visible",currentMode !== "botplay");
 
   }
@@ -1409,6 +1487,10 @@
   function loop(timestamp) {
     const dt = Math.min(50, timestamp - (lastFrame || timestamp));
     lastFrame = timestamp;
+    if (survivalApplyNextFrame && started && !paused && !ended && currentMode === "survival") {
+      survivalApplyNextFrame = false;
+      applySurvivalBurst();
+    }
     if (started && !paused && !ended) {
       updatePlayer(dt);
       updateBots(dt);
@@ -1453,6 +1535,7 @@
   function leaveToMenu() {
     started = false;
     paused = false;
+    survivalApplyNextFrame = false;
     held.clear();
     shift.dir = 0;
     $("pauseOverlay").classList.add("hidden");
@@ -1485,6 +1568,12 @@
   document.querySelectorAll("[data-bot-level]").forEach((button) => {
     button.addEventListener("click", () => {
       selectedBotLevel = Number(button.dataset.botLevel);
+      updateModeScreen();
+    });
+  });
+  document.querySelectorAll("[data-survival-difficulty]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedSurvivalDifficulty = Number(button.dataset.survivalDifficulty);
       updateModeScreen();
     });
   });
