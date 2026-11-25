@@ -1092,7 +1092,7 @@
     }
     return candidates;
   }
-  function botPlacementValue(candidate, bot, combo = bot.combo, b2b = bot.b2b) {
+  function botPlacementValue(candidate, bot, combo = bot.combo, b2b = bot.b2b, referenceMetrics = null, strategyOverride = null) {
     const difficult = (candidate.spin !== "—" && candidate.lines > 0) || candidate.lines === 4;
     const nextCombo = candidate.lines > 0 ? combo + 1 : -1;
     const attack = attackFor(candidate.lines,candidate.spin || "—",nextCombo,difficult ? b2b : 0);
@@ -1103,11 +1103,11 @@
     const currentAPM = bot.sent / Math.max(runElapsed / 60000,0.1);
     const apmPressure = Math.max(0.75,Math.min(2.4,bot.targetAPM / Math.max(1,currentAPM)));
     const attackWeight = bot.attackWeight * apmPressure * (1 + bot.targetAPP);
-    const currentMetrics = bot.strategyMetrics || evaluateBoard(bot.board);
+    const currentMetrics = referenceMetrics || bot.strategyMetrics || evaluateBoard(bot.board);
     const nextMetrics = evaluateBoard(candidate.board);
     const stackDrop = Math.max(0, currentMetrics.maxHeight - nextMetrics.maxHeight);
     const aggregateDrop = Math.max(0, currentMetrics.aggregate - nextMetrics.aggregate);
-    const strategy = bot.strategyMode || botStrategyFor(bot, currentMetrics.maxHeight);
+    const strategy = strategyOverride || botStrategyFor(bot, currentMetrics.maxHeight);
     let strategyBonus = 0;
 
     if (strategy === "tetris") {
@@ -1116,9 +1116,6 @@
       else if (candidate.lines > 0) strategyBonus -= candidate.lines * (bot.level <= 2 ? 8 : 3.5);
       strategyBonus += tetrisWellPotential(nextMetrics) * (bot.level <= 2 ? 1.15 : 1.0) * tetrisFocus;
       if (candidate.spin === "T-SPIN" && candidate.lines > 0 && bot.level <= 2) strategyBonus -= 17;
-      if (bot.level === 4 && bot.spinDoubleHunt && candidate.spin === "T-SPIN" && candidate.lines === 2) {
-        strategyBonus += 54;
-      }
     } else if (strategy === "downstack") {
       strategyBonus += candidate.lines * (bot.level === 5 ? 25 : 19);
       strategyBonus += stackDrop * 8 + aggregateDrop * 0.24;
@@ -1134,6 +1131,12 @@
       strategyBonus += tetrisWellPotential(nextMetrics) * 0.28;
     }
 
+    // Level 4 occasionally takes a T-spin-double opportunity whether it is
+    // currently building a Tetris well or clearing a dangerous stack.
+    if (bot.level === 4 && bot.spinDoubleHunt && candidate.spin === "T-SPIN" && candidate.lines === 2) {
+      strategyBonus += 54;
+    }
+
     return botBoardValue(candidate.board,bot) + clearValue + spinValue
       + attack * attackWeight * 3.1 + strategyBonus + (allClear ? 35 : 0) - candidate.drop * 0.012;
   }
@@ -1142,7 +1145,7 @@
     bot.strategyMode = botStrategyFor(bot, bot.strategyMetrics.maxHeight);
     // Level 4 only actively hunts T-spin doubles on some turns, preserving its
     // stronger Tetris/downstack identity the rest of the time.
-    bot.spinDoubleHunt = bot.level === 4 && bot.strategyMode === "tetris" && Math.random() < 0.18;
+    bot.spinDoubleHunt = bot.level === 4 && bot.strategyMetrics.maxHeight < 16 && Math.random() < 0.18;
     const placements = enumerateBotPlacements(bot.board,bot.current.type);
     if (!placements.length) return null;
     const tier = BOT_TIERS[bot.level] || BOT_TIERS[3];
@@ -1155,14 +1158,20 @@
       const nextType = bot.queue[0];
       if (nextType) {
         const next = enumerateBotPlacements(first.p.board,nextType);
+        const firstMetrics = evaluateBoard(first.p.board);
+        const nextStrategy = botStrategyFor(bot, firstMetrics.maxHeight);
         let nextBest = -Infinity;
         for (const second of next) {
           const nextB2B = ((first.p.spin !== "—" && first.p.lines > 0) || first.p.lines === 4) ? bot.b2b + 1 : bot.b2b;
-          let secondValue = botPlacementValue(second,bot,first.p.lines > 0 ? bot.combo + 1 : -1,nextB2B);
+          let secondValue = botPlacementValue(second,bot,first.p.lines > 0 ? bot.combo + 1 : -1,nextB2B,firstMetrics,nextStrategy);
           if (bot.level >= 5 && bot.queue[1]) {
             const third = enumerateBotPlacements(second.board,bot.queue[1]);
+            const secondMetrics = evaluateBoard(second.board);
+            const thirdStrategy = botStrategyFor(bot, secondMetrics.maxHeight);
             let thirdBest = -Infinity;
-            for (const option of third) thirdBest = Math.max(thirdBest,botPlacementValue(option,bot));
+            for (const option of third) {
+              thirdBest = Math.max(thirdBest,botPlacementValue(option,bot,bot.combo,bot.b2b,secondMetrics,thirdStrategy));
+            }
             if (Number.isFinite(thirdBest)) secondValue += thirdBest * 0.22;
           }
           if (secondValue > nextBest) nextBest = secondValue;
