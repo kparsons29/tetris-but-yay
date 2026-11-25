@@ -61,6 +61,10 @@
           <div class="mode-index">04</div><div class="mode-art bot-art"><span>1V1</span><i></i><i></i><i></i></div>
           <div class="mode-card-copy"><span class="mode-tag">VERSUS / AI</span><h2>BOTPLAY</h2><p>Take on a single opponent. Five difficulty tiers, from beginner to elite.</p><div class="mode-meta"><span>1 VS 1</span><span>GARBAGE ATTACKS</span></div></div>
         </button>
+        <button class="mode-card" data-mode="survival">
+          <div class="mode-index">05</div><div class="mode-art survival-art"><span>60s</span><i></i><i></i><i></i></div>
+          <div class="mode-card-copy"><span class="mode-tag">ENDURANCE / GARBAGE RUSH</span><h2>SURVIVAL</h2><p>Survive one minute as garbage builds constantly. Ten difficulty levels, one board.</p><div class="mode-meta"><span>60 SECONDS</span><span>10 DIFFICULTIES</span></div></div>
+        </button>
       </div>
       <div class="mode-footer">
         <div class="bot-level-picker hidden" id="botLevelPicker">
@@ -71,6 +75,21 @@
             <button class="selected" data-bot-level="3"><b>3</b><small>LOW B</small></button>
             <button data-bot-level="4"><b>4</b><small>A</small></button>
             <button data-bot-level="5"><b>5</b><small>S+</small></button>
+          </div>
+        </div>
+        <div class="survival-difficulty-picker hidden" id="survivalDifficultyPicker">
+          <div class="survival-difficulty-copy"><span class="section-kicker">SURVIVAL DIFFICULTY</span><strong id="survivalDifficultyDescription">LEVEL 1 · 5 LINES / MIN</strong></div>
+          <div class="survival-difficulty-buttons" aria-label="Choose Survival difficulty">
+            <button type="button" class="selected" data-survival-difficulty="1" title="Very easy"><b>1</b><small>VERY EASY</small></button>
+            <button type="button" data-survival-difficulty="2" title="Easy"><b>2</b><small>EASY</small></button>
+            <button type="button" data-survival-difficulty="3" title="Easy plus"><b>3</b><small>EASY+</small></button>
+            <button type="button" data-survival-difficulty="4" title="Normal"><b>4</b><small>NORMAL</small></button>
+            <button type="button" data-survival-difficulty="5" title="Moderate"><b>5</b><small>MODERATE</small></button>
+            <button type="button" data-survival-difficulty="6" title="Hard"><b>6</b><small>HARD</small></button>
+            <button type="button" data-survival-difficulty="7" title="Very hard"><b>7</b><small>VERY HARD</small></button>
+            <button type="button" data-survival-difficulty="8" title="Extreme"><b>8</b><small>EXTREME</small></button>
+            <button type="button" data-survival-difficulty="9" title="Insane"><b>9</b><small>INSANE</small></button>
+            <button type="button" data-survival-difficulty="10" title="Almost impossible"><b>10</b><small>BRUTAL</small></button>
           </div>
         </div>
         <div class="mode-start-row"><span id="modeHint">40 lines · fastest time wins</span><button class="primary-button" id="startSelectedMode">START MODE <span>→</span></button></div>
