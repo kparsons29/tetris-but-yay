@@ -128,49 +128,68 @@
         <div class="game-actions"><button class="game-action-button" id="restartButton" title="Restart">↻ <span>RESTART</span></button><button class="game-action-button primary-action" id="pauseButton" title="Pause">Ⅱ <span>PAUSE</span></button></div>
       </div>
       <div class="play-layout" id="playLayout">
-        <aside class="play-side hold-side">
-          <section class="play-widget">
-            <div class="widget-heading"><span>HOLD</span><kbd id="display-hold">C</kbd></div>
-            <canvas id="holdCanvas" width="120" height="84" aria-label="Held piece"></canvas>
-            <p class="widget-hint" id="holdHint">EMPTY</p>
+        <div class="field-group player-field-group">
+          <aside class="play-side hold-side">
+            <section class="play-widget">
+              <div class="widget-heading"><span>HOLD</span><kbd id="display-hold">C</kbd></div>
+              <canvas id="holdCanvas" width="120" height="84" aria-label="Held piece"></canvas>
+              <p class="widget-hint" id="holdHint">EMPTY</p>
+            </section>
+          </aside>
+          <section class="field-column">
+            <div class="field-topline"><span><i class="live-dot"></i> YOUR FIELD</span><span id="speedLabel">1.0× GRAVITY</span></div>
+            <div class="board-frame" id="boardFrame">
+              <canvas id="playerBoard" width="300" height="600" aria-label="Your 10 by 20 game board"></canvas>
+              <div class="board-scanline"></div>
+              <div class="board-objective" id="boardObjective" aria-hidden="true"></div>
+              <div class="board-float-popup attack-popup" id="attackPopup" aria-hidden="true"></div>
+              <div class="board-float-popup cancel-popup" id="cancelPopup" aria-hidden="true"></div>
+              <div class="pause-overlay hidden" id="pauseOverlay"><div class="pause-card"><span class="section-kicker">RUN PAUSED</span><h2>TAKE A BREATHER.</h2><p>Your run is saved while paused.</p><button class="primary-button" id="resumeButton">RESUME <span>→</span></button><button class="secondary-button full-button" id="pauseRestartButton">RESTART RUN</button><button class="text-button" id="pauseMenuButton">BACK TO MENU</button></div></div>
+              <div class="pause-overlay hidden" id="resultOverlay"><div class="pause-card"><span class="section-kicker" id="resultKicker">RUN COMPLETE</span><h2 id="resultTitle">NICE RUN.</h2><p id="resultSummary">Your result will appear here.</p><div class="result-stats" id="resultStats"></div><button class="primary-button" id="retryGame">PLAY AGAIN <span>→</span></button><button class="secondary-button full-button" id="resultMenuButton">BACK TO MENU</button></div></div>
+            </div>
+            <div class="run-status"><span id="battleStatus">READY</span><span id="runObjective">CLEAR 40 LINES</span></div>
+            <div class="mobile-controls" aria-label="Touch controls">
+              <button data-touch="left">◀<small>LEFT</small></button><button data-touch="down">▼<small>DROP</small></button><button data-touch="right">▶<small>RIGHT</small></button>
+              <button data-touch="ccw">↶<small>CCW</small></button><button data-touch="cw">↻<small>CW</small></button><button data-touch="hard">⬇<small>HARD</small></button>
+              <button data-touch="hold">HOLD<small>C</small></button><button data-touch="180">180°<small>A</small></button>
+            </div>
           </section>
-        </aside>
-        <section class="field-column">
-          <div class="field-topline"><span><i class="live-dot"></i> YOUR FIELD</span><span id="speedLabel">1.0× GRAVITY</span></div>
-          <div class="board-frame" id="boardFrame">
-            <canvas id="playerBoard" width="300" height="600" aria-label="Your 10 by 20 game board"></canvas>
-            <div class="board-scanline"></div>
-            <div class="board-objective" id="boardObjective" aria-hidden="true"></div>
-            <div class="board-float-popup attack-popup" id="attackPopup" aria-hidden="true"></div>
-            <div class="board-float-popup cancel-popup" id="cancelPopup" aria-hidden="true"></div>
-            <div class="pause-overlay hidden" id="pauseOverlay"><div class="pause-card"><span class="section-kicker">RUN PAUSED</span><h2>TAKE A BREATHER.</h2><p>Your run is saved while paused.</p><button class="primary-button" id="resumeButton">RESUME <span>→</span></button><button class="secondary-button full-button" id="pauseRestartButton">RESTART RUN</button><button class="text-button" id="pauseMenuButton">BACK TO MENU</button></div></div>
-            <div class="pause-overlay hidden" id="resultOverlay"><div class="pause-card"><span class="section-kicker" id="resultKicker">RUN COMPLETE</span><h2 id="resultTitle">NICE RUN.</h2><p id="resultSummary">Your result will appear here.</p><div class="result-stats" id="resultStats"></div><button class="primary-button" id="retryGame">PLAY AGAIN <span>→</span></button><button class="secondary-button full-button" id="resultMenuButton">BACK TO MENU</button></div></div>
-          </div>
-          <div class="run-status"><span id="battleStatus">READY</span><span id="runObjective">CLEAR 40 LINES</span></div>
-          <div class="mobile-controls" aria-label="Touch controls">
-            <button data-touch="left">◀<small>LEFT</small></button><button data-touch="down">▼<small>DROP</small></button><button data-touch="right">▶<small>RIGHT</small></button>
-            <button data-touch="ccw">↶<small>CCW</small></button><button data-touch="cw">↻<small>CW</small></button><button data-touch="hard">⬇<small>HARD</small></button>
-            <button data-touch="hold">HOLD<small>C</small></button><button data-touch="180">180°<small>A</small></button>
-          </div>
-        </section>
-        <aside class="play-side next-side">
-          <section class="play-widget next-widget"><div class="widget-heading"><span>NEXT</span><span class="tiny-tag">5 QUEUE</span></div><canvas id="nextCanvas" width="140" height="340" aria-label="Next five pieces"></canvas></section>
-          <div class="clear-hud" aria-live="polite">
-            <div class="clear-popup" id="clearPopup" role="status"></div>
-            <div class="combo-counter" id="comboHud"><span>COMBO</span><strong id="comboCount">×0</strong></div>
-          </div>
-          <div class="run-stats" id="runStats"></div>
-        </aside>
-        <aside class="opponent-side hidden" id="opponentSide">
-          <section class="play-widget bot-info" id="botInfo">
-            <div class="widget-heading"><span>OPPONENT FIELD</span><span class="bot-rank-chip" id="botRankChip">LV. 3</span></div>
-            <strong id="botNameInGame">STACK BOT</strong>
-            <span id="botRankInGame">LOW B RANK</span>
-            <canvas id="botBoard0" width="300" height="600" aria-label="Opponent 10 by 20 playing field"></canvas>
-            <div class="bot-state" id="botState0">READY</div>
-            <div class="bot-stats" id="botStats"></div>
+          <aside class="play-side next-side">
+            <section class="play-widget next-widget"><div class="widget-heading"><span>NEXT</span><span class="tiny-tag">5 QUEUE</span></div><canvas id="nextCanvas" width="140" height="340" aria-label="Next five pieces"></canvas></section>
+            <div class="clear-hud" aria-live="polite">
+              <div class="clear-popup" id="clearPopup" role="status"></div>
+              <div class="combo-counter" id="comboHud"><span>COMBO</span><strong id="comboCount">×0</strong></div>
+            </div>
+            <div class="run-stats" id="runStats"></div>
+          </aside>
+        </div>
+        <div class="field-group opponent-side hidden" id="opponentSide">
+          <aside class="play-side hold-side opponent-hold-side">
+            <section class="play-widget">
+              <div class="widget-heading"><span>HOLD</span><kbd id="botDisplayHold">C</kbd></div>
+              <canvas id="botHoldCanvas" width="120" height="84" aria-label="Opponent held piece"></canvas>
+              <p class="widget-hint" id="botHoldHint">EMPTY</p>
+            </section>
+          </aside>
+          <section class="field-column opponent-field-column">
+            <div class="field-topline"><span><i class="live-dot"></i> OPPONENT FIELD</span><span id="botSpeedLabel">0.75 PPS</span></div>
+            <div class="board-frame" id="botBoardFrame">
+              <canvas id="botBoard0" width="300" height="600" aria-label="Opponent 10 by 20 playing field"></canvas>
+              <div class="board-scanline"></div>
+              <div class="board-float-popup attack-popup" id="botAttackPopup" aria-hidden="true"></div>
+              <div class="board-float-popup cancel-popup" id="botCancelPopup" aria-hidden="true"></div>
+            </div>
+            <div class="run-status"><span id="botState0">READY</span><span id="botRunObjective">LEVEL 3 · LOW B</span></div>
           </section>
-        </aside>
+          <aside class="play-side next-side opponent-next-side">
+            <section class="play-widget next-widget"><div class="widget-heading"><span>NEXT</span><span class="tiny-tag">5 QUEUE</span></div><canvas id="botNextCanvas" width="140" height="340" aria-label="Opponent next five pieces"></canvas></section>
+            <div class="clear-hud" aria-live="polite">
+              <div class="clear-popup" id="botClearPopup" role="status"></div>
+              <div class="combo-counter" id="botComboHud"><span>COMBO</span><strong id="botComboCount">×0</strong></div>
+            </div>
+            <div class="run-stats" id="botStats"></div>
+          </aside>
+        </div>
       </div>
     </section>
   </main>

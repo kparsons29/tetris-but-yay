@@ -212,6 +212,8 @@
       const el = $(id);
       if (el) el.textContent = keyLabel(keybinds[action]);
     }
+    const botHoldKey = $("botDisplayHold");
+    if (botHoldKey) botHoldKey.textContent = keyLabel(keybinds.hold);
     const summary = $("keybindSummary");
     if (summary) {
       summary.textContent = "";
@@ -306,11 +308,11 @@
   // PPS controls piece cadence; APM and APP shape each bot's attack preference.
   const BOT_TIERS = [
     null,
-    { rank: "D–D+", pps: 0.745, apm: 8.1, app: 0.18, pace: 60000/0.745, noise: 5.2, holes: 7.8, height: 0.42, attackWeight: 1.0 },
-    { rank: "C−–C", pps: 0.855, apm: 11.85, app: 0.23, pace: 60000/0.855, noise: 3.5, holes: 8.8, height: 0.52, attackWeight: 1.15 },
-    { rank: "LOW B", pps: 1.06, apm: 19.1, app: 0.30, pace: 60000/1.06, noise: 1.8, holes: 10.2, height: 0.64, attackWeight: 1.35 },
-    { rank: "A", pps: 1.27, apm: 28.4, app: 0.37, pace: 60000/1.27, noise: 0.65, holes: 12.0, height: 0.78, attackWeight: 1.65 },
-    { rank: "S+", pps: 1.75, apm: 56.4, app: 0.54, pace: 60000/1.75, noise: 0.08, holes: 14.5, height: 0.92, attackWeight: 2.1 }
+    { rank: "D–D+", pps: 0.745, apm: 8.1, app: 0.18, pace: 1000/0.745, noise: 5.2, holes: 7.8, height: 0.42, attackWeight: 1.0 },
+    { rank: "C−–C", pps: 0.855, apm: 11.85, app: 0.23, pace: 1000/0.855, noise: 3.5, holes: 8.8, height: 0.52, attackWeight: 1.15 },
+    { rank: "LOW B", pps: 1.06, apm: 19.1, app: 0.30, pace: 1000/1.06, noise: 1.8, holes: 10.2, height: 0.64, attackWeight: 1.35 },
+    { rank: "A", pps: 1.27, apm: 28.4, app: 0.37, pace: 1000/1.27, noise: 0.65, holes: 12.0, height: 0.78, attackWeight: 1.65 },
+    { rank: "S+", pps: 1.75, apm: 56.4, app: 0.54, pace: 1000/1.75, noise: 0.08, holes: 14.5, height: 0.92, attackWeight: 2.1 }
   ];
   try {
     const savedStats = JSON.parse(localStorage.getItem("stacklab-visible-stats") || "null");
@@ -362,9 +364,10 @@
       index, name, difficulty, level, rank: tier.rank,
       pace: tier.pace, clock: 0, noise: tier.noise, holeWeight: tier.holes, heightWeight: tier.height,
       targetPPS: tier.pps, targetAPM: tier.apm, targetAPP: tier.app, attackWeight: tier.attackWeight,
-      board: makeBoard(), queue: newQueue(), current: null, combo: -1, b2b: 0, levelScore: 1,
+      board: makeBoard(), queue: newQueue(), current: null, hold: null, combo: -1, b2b: 0, levelScore: 1,
       incoming: [], incomingClock: 1000, lines: 0, sent: 0, alive: true,
-      pieces: 0, score: 0, dirty: true, lastGarbageHole: null
+      pieces: 0, score: 0, dirty: true, lastGarbageHole: null,
+      clearPopupRemaining: 0, attackPopupRemaining: 0, cancelPopupRemaining: 0
     };
     state.current = takeNext(state);
     return state;
@@ -432,6 +435,10 @@
     $("clearPopup").textContent = "";
     $("attackPopup").classList.remove("visible");
     $("cancelPopup").classList.remove("visible");
+    $("botClearPopup").classList.remove("visible");
+    $("botClearPopup").textContent = "";
+    $("botAttackPopup").classList.remove("visible");
+    $("botCancelPopup").classList.remove("visible");
     lastUiAt = 0;
     apmWindow = [];
     targetCursor = 0;
@@ -443,15 +450,11 @@
       ? MODE_INFO.botplay.kicker + " / LEVEL " + selectedBotLevel + " · " + BOT_TIERS[selectedBotLevel].rank
       : MODE_INFO[currentMode].kicker;
     $("runObjective").textContent = MODE_INFO[currentMode].objective;
-    $("botInfo").classList.toggle("hidden", currentMode !== "botplay");
-    $("opponentSide").classList.toggle("hidden",currentMode !== "botplay");
+    $("opponentSide").classList.toggle("hidden", currentMode !== "botplay");
     $("playLayout").classList.toggle("botplay-layout",currentMode === "botplay");
     $("boardObjective").classList.toggle("visible",currentMode !== "botplay");
-    if (currentMode === "botplay" && bots[0]) {
-      $("botRankChip").textContent = "LV. " + selectedBotLevel;
-      $("botNameInGame").textContent = bots[0].name;
-      $("botRankInGame").textContent = bots[0].rank + " RANK";
-    }
+    botPreviewCacheKey = null;
+    if (currentMode === "botplay" && bots[0]) $("botSpeedLabel").textContent = bots[0].targetPPS.toFixed(2) + " PPS";
     if (autostart) showPage("gamePage");
     renderSkinPreview();
     renderAll(true);
@@ -716,8 +719,7 @@
   }
 
   function isOccupied(board, x, y) {
-    if (x < 0 || x >= W || y >= H) return true;
-    if (y < 0) return false;
+    if (x < 0 || x >= W || y < 0 || y >= H) return true;
     return Boolean(board[y][x]);
   }
   function classifyTSpin(piece, board) {
@@ -732,16 +734,29 @@
       0: [0,1], 1: [1,3], 2: [2,3], 3: [0,2]
     }[piece.rot];
     const frontCount = Number(corners[front[0]]) + Number(corners[front[1]]);
-    return frontCount === 2 || piece.kick === 4 ? "T-SPIN" : "MINI T-SPIN";
+    return frontCount === 2 || piece.kick === 3 ? "T-SPIN" : "MINI T-SPIN";
   }
   // Non-T immobile spins use TETR.IO-style All-Spin behaviour:
   // they keep the normal clear attack value, but qualify as difficult clears.
+  function canMoveSpinPiece(board, piece, dx, dy) {
+    for (const [cx,cy] of SHAPES[piece.type][piece.rot]) {
+      const x = piece.x + cx + dx, y = piece.y + cy + dy;
+      // The spin test treats the edge of the field as a wall, including above
+      // the visible board. Normal movement still uses the game's spawn buffer.
+      if (x < 0 || x >= W || y < 0 || y >= H || board[y][x]) return false;
+    }
+    return true;
+  }
   function classifySpin(piece, board) {
+    // A spin only counts when the last action was a rotation and the piece is
+    // grounded. T pieces then use the 3-corner test; non-T pieces must be
+    // completely immobile in all four cardinal directions.
+    if (!piece.lastRotate || canMoveSpinPiece(board, piece, 0, 1)) return "—";
     if (piece.type === "T") return classifyTSpin(piece, board);
-    if (!piece.lastRotate) return "—";
-    const canMove = !collides(board, piece, piece.x - 1, piece.y, piece.rot)
-      || !collides(board, piece, piece.x + 1, piece.y, piece.rot)
-      || !collides(board, piece, piece.x, piece.y + 1, piece.rot);
+    const canMove = canMoveSpinPiece(board, piece, -1, 0)
+      || canMoveSpinPiece(board, piece, 1, 0)
+      || canMoveSpinPiece(board, piece, 0, -1)
+      || canMoveSpinPiece(board, piece, 0, 1);
     return canMove ? "—" : "ALL-SPIN";
   }
   // Tetris 99-style base garbage and combo bonuses.
@@ -751,7 +766,7 @@
     let base = [0,0,1,2,4][lines] || 0;
     if (spin === "T-SPIN") base = [0,2,4,6,0][lines] || 0;
     if (spin === "MINI T-SPIN") base = [0,0,1,0,0][lines] || 0;
-    // ALL-SPIN deliberately keeps the normal line-clear value.
+    // All-spins retain the game's normal line-clear attack value.
     const comboBonus = combo >= 0 ? COMBO_ATTACK[Math.min(combo, 10)] : 0;
     return Math.max(0, base + comboBonus + b2bBonus);
   }
@@ -841,6 +856,15 @@
     popup.classList.add("visible");
     if (kind === "cancel") cancelPopupRemaining = 2000;
     else attackPopupRemaining = 2000;
+  }
+  function showBotBoardPopup(bot, kind, amount) {
+    const popup = $(kind === "cancel" ? "botCancelPopup" : "botAttackPopup");
+    popup.textContent = kind === "cancel" ? "−" + amount : String(amount);
+    popup.style.left = (18 + Math.random() * 64).toFixed(1) + "%";
+    popup.style.top = (64 + Math.random() * 23).toFixed(1) + "%";
+    popup.classList.remove("visible");
+    popup.classList.add("visible");
+    bot[kind === "cancel" ? "cancelPopupRemaining" : "attackPopupRemaining"] = 2000;
   }
   function actionName(spin, lines, attack) {
     let label = spin === "—" ? (lines === 4 ? "TETRIS" : lines + " LINE CLEAR") : spin + (lines ? " " + lines : "");
@@ -1042,9 +1066,21 @@
     bot.score += scoreFor(best.lines, spin, bot.levelScore, wasB2B, allClear)
       + (best.lines ? bot.combo * 50 * bot.levelScore : 0)
       + Math.max(0,best.drop || 0) * 2;
+    const clearMessage = clearLabelFor(best.lines, spin);
+    if (clearMessage) {
+      const popup = $("botClearPopup");
+      popup.textContent = clearMessage;
+      popup.classList.add("visible");
+      bot.clearPopupRemaining = 2000;
+    }
     const unblockedAttack = cancelIncoming(bot, attack);
-    if (unblockedAttack) sendBotAttack(bot, unblockedAttack);
-    if (best.lines && Math.random() < 0.4) logEvent(bot.name + " cleared " + best.lines + " lines.", "muted");
+    const cancelled = attack - unblockedAttack;
+    if (cancelled > 0) showBotBoardPopup(bot, "cancel", cancelled);
+    if (unblockedAttack > 0) {
+      sendBotAttack(bot, unblockedAttack);
+      showBotBoardPopup(bot, "attack", unblockedAttack);
+    }
+    if (best.lines && Math.random() < 0.4) logEvent("OPPONENT CLEARED " + best.lines + " LINES.", "muted");
     bot.current = takeNext(bot);
     if (collides(bot.board, bot.current)) bot.alive = false;
   }
@@ -1054,9 +1090,15 @@
       if (!bot.alive) continue;
       processGarbage(bot, dt, false);
       if (!bot.alive) continue;
+      for (const [timer, id] of [["clearPopupRemaining","botClearPopup"],["attackPopupRemaining","botAttackPopup"],["cancelPopupRemaining","botCancelPopup"]]) {
+        if (bot[timer] > 0) {
+          bot[timer] = Math.max(0, bot[timer] - dt);
+          if (bot[timer] === 0) $(id).classList.remove("visible");
+        }
+      }
       bot.clock += dt;
       if (bot.clock >= bot.pace) {
-        bot.clock = 0;
+        bot.clock -= bot.pace;
         botStep(bot);
       }
     }
@@ -1201,6 +1243,7 @@
     }
   }
   let previewCacheKey = null;
+  let botPreviewCacheKey = null;
   function renderSkinPreview() {
     const canvas=$("skinPreview");
     if(!canvas) return;
@@ -1211,22 +1254,16 @@
     ctx.font="9px monospace"; ctx.textAlign="center";
     ctx.fillText(pieceSkin.toUpperCase(),105,76);
   }
-  function renderPreviews() {
-    if (!player) return;
-    const key = pieceSkin + "|" + (player.hold || "-") + "|" + player.queue.slice(0, 5).join("");
-    if (key === previewCacheKey) return;
-    previewCacheKey = key;
-    drawPreview($("holdCanvas"), player.hold, 0, 17);
-    const canvas = $("nextCanvas");
+  function drawQueuePreview(canvas, queue) {
+    if (!canvas) return;
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (!player) return;
-    for (let i = 0; i < Math.min(5, player.queue.length); i++) {
+    for (let i = 0; i < Math.min(5, queue.length); i++) {
       if (i > 0) {
         ctx.strokeStyle = "rgba(153,177,211,.09)";
         ctx.beginPath(); ctx.moveTo(11, i * 66); ctx.lineTo(129, i * 66); ctx.stroke();
       }
-      const type = player.queue[i], cell = i === 0 ? 16 : 14;
+      const type = queue[i], cell = i === 0 ? 16 : 14;
       const shape = SHAPES[type][0];
       const minX = Math.min(...shape.map((v) => v[0]));
       const maxX = Math.max(...shape.map((v) => v[0]));
@@ -1234,10 +1271,25 @@
       const maxY = Math.max(...shape.map((v) => v[1]));
       const px = (140 - (maxX - minX + 1) * cell) / 2 - minX * cell;
       const py = i * 66 + (60 - (maxY - minY + 1) * cell) / 2 - minY * cell;
-      for (const [x,y] of shape) {
-        drawSkinBlock(ctx,px+x*cell,py+y*cell,cell,COLORS[type]);
-      }
+      for (const [x,y] of shape) drawSkinBlock(ctx,px+x*cell,py+y*cell,cell,COLORS[type]);
     }
+  }
+  function renderPreviews() {
+    if (!player) return;
+    const key = pieceSkin + "|" + (player.hold || "-") + "|" + player.queue.slice(0, 5).join("");
+    if (key === previewCacheKey) return;
+    previewCacheKey = key;
+    drawPreview($("holdCanvas"), player.hold, 0, 17);
+    drawQueuePreview($("nextCanvas"), player.queue);
+  }
+  function renderBotPreviews() {
+    if (!bots.length) return;
+    const bot = bots[0];
+    const key = pieceSkin + "|" + (bot.hold || "-") + "|" + bot.queue.slice(0, 5).join("");
+    if (key === botPreviewCacheKey) return;
+    botPreviewCacheKey = key;
+    drawPreview($("botHoldCanvas"), bot.hold, 0, 17);
+    drawQueuePreview($("botNextCanvas"), bot.queue);
   }
   let renderedStatsKey = "";
   function renderRunStats() {
@@ -1309,6 +1361,7 @@
       bots[0].dirty=false;
     }
     renderPreviews();
+    renderBotPreviews();
     updateUI(forceStats);
   }
   function updateUI(forceStats = false) {
@@ -1323,6 +1376,15 @@
     $("comboCount").textContent = "×" + Math.max(0, player.combo + 1);
     $("comboHud").classList.toggle("active", player.combo >= 0);
     $("holdHint").textContent = player.hold ? "READY TO SWAP" : "EMPTY";
+    if (bots.length) {
+      const bot = bots[0];
+      $("botComboCount").textContent = "×" + Math.max(0, bot.combo + 1);
+      $("botComboHud").classList.toggle("active", bot.combo >= 0);
+      $("botHoldHint").textContent = bot.hold ? "READY TO SWAP" : "EMPTY";
+      $("botSpeedLabel").textContent = bot.targetPPS.toFixed(2) + " PPS";
+      $("botState0").textContent = !bot.alive ? "TOPPED OUT" : started ? "RUN IN PROGRESS" : "READY";
+      $("botRunObjective").textContent = "LEVEL " + selectedBotLevel + " · " + bot.rank;
+    }
     $("speedLabel").textContent = (950 / gravityInterval(player.level)).toFixed(1) + "× GRAVITY";
     $("pauseButton").innerHTML = paused ? "▶ <span>RESUME</span>" : "Ⅱ <span>PAUSE</span>";
     $("battleStatus").textContent = ended ? "RUN COMPLETE" : paused ? "PAUSED" : started ? "RUN IN PROGRESS" : "READY";
@@ -1335,12 +1397,7 @@
       : currentMode === "blitz" ? formatTime(blitzRemaining).slice(0,5) : "";
     $("boardObjective").dataset.label = currentMode === "blitz" ? "TIME LEFT" : "LINES LEFT";
     $("boardObjective").classList.toggle("visible",currentMode !== "botplay");
-    if (bots.length) {
-      const bot = bots[0];
-      $("botState0").textContent = !bot.alive ? "TOPPED OUT" : started ? "ACTIVE" : "READY";
-      $("botRankChip").textContent = "LV. " + selectedBotLevel;
-      $("botRankInGame").textContent = bot.rank + " RANK";
-    }
+
   }
   function logEvent(message, tone) {
     // The playfield stays deliberately uncluttered; keep the latest event
