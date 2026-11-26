@@ -65,6 +65,7 @@ pub fn start() {
                                     &scope,
                                     json!({
                                         "type": "suggestion",
+                                        "epoch": message["epoch"].as_u64().unwrap_or(0),
                                         "request_id": request_id,
                                         "hold": movement.hold,
                                         "piece": piece_name(location.kind.0),
@@ -76,7 +77,7 @@ pub fn start() {
                                 );
                             }
                             None => {
-                                post(&scope, json!({ "type": "dead", "request_id": request_id }));
+                                post(&scope, json!({ "type": "dead", "epoch": message["epoch"].as_u64().unwrap_or(0), "request_id": request_id }));
                             }
                         }
                     } else {
@@ -150,7 +151,7 @@ async fn build_engine(message: &Value) -> Result<Interface, String> {
 
     let options = Options {
         use_hold: true,
-        speculate: true,
+        speculate: false,
         max_nodes,
         min_nodes: 0,
         threads: 1,
