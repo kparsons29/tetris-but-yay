@@ -221,7 +221,11 @@
   function handlePacket(packet) {
     switch(packet.type) {
       case "rooms:list": renderRooms(packet.rooms || []); break;
-      case "room:state": room=packet.room; renderRoom(); break;
+      case "room:state":
+        room=packet.room;
+        if (["multiplayerPage","homePage"].includes($("appRoot").dataset.page)) showPage("roomPage");
+        renderRoom();
+        break;
       case "room:left": room=null; showPage("multiplayerPage"); break;
       case "match:started": {
         const spectator=currentMember()?.role!=="playing";
