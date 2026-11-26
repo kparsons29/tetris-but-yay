@@ -142,3 +142,22 @@ test("a forfeit records results and keeps remaining room members connected", asy
   assert.equal(room.members.has("bravo"),true);
   assert.equal(persisted.length,1);
 });
+
+test("a spectator leaving does not cancel the active players' countdown", async () => {
+  const {manager,clients,act,last} = setup();
+  await act(clients[0], {type:"room:create"});
+  const id = last("alpha","room:state").room.id;
+  await act(clients[1], {type:"room:join",roomId:id});
+  await act(clients[2], {type:"room:join",roomId:id});
+  const room = manager.rooms.get(id);
+  await act(clients[0], {type:"room:ready",ready:true});
+  await act(clients[1], {type:"room:ready",ready:true});
+  const timer = room.countdownTimer;
+  assert.ok(timer);
+  await act(clients[2], {type:"room:leave"});
+  assert.equal(room.countdownTimer,timer);
+  assert.equal(room.members.get("alpha").ready,true);
+  assert.equal(room.members.get("bravo").ready,true);
+  clearTimeout(room.countdownTimer);
+  room.countdownTimer = null;
+});
