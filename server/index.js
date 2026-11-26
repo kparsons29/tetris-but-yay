@@ -71,7 +71,7 @@ wss.on("connection", socket => {
         const { data, error } = await authClient.auth.getUser(packet.token);
         if (error || !data?.user) throw new Error("Invalid session.");
         client.userId = data.user.id;
-        const profileClient = createClient(URL, ANON, {
+        const profileClient = createClient(SUPABASE_URL, ANON, {
           global: { headers: { Authorization: "Bearer " + packet.token } },
           auth: { autoRefreshToken: false, persistSession: false }
         });
