@@ -1,0 +1,13 @@
+diff --git a/tbp/src/lib.rs b/tbp/src/lib.rs
+--- a/tbp/src/lib.rs
++++ b/tbp/src/lib.rs
+@@ -51,6 +51,9 @@ pub async fn run(
+ 
+                 let options = cold_clear::Options {
+                     speculate: matches!(randomizer, RandomizerState::SevenBag { .. }),
++                    // TBP v1.0 suggestions do not expose whether hold was used.
++                    // Keep the in-game queue synchronized by disabling hold.
++                    use_hold: false,
+                     ..Default::default()
+                 };
+                 let eval = cold_clear::evaluation::Standard::default();
