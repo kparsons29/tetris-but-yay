@@ -3,8 +3,10 @@ name: Build Cold Clear WebAssembly
 on:
   pull_request:
     paths:
-      - "cold-clear-wasm/**"
-      - "cold-clear/**"
+      - "game.js"
+      - "cold-clear/main-worker.js"
+      - "cold-clear/worker.js"
+      - "cold-clear/patches/**"
       - ".github/workflows/build-cold-clear.yml"
   workflow_dispatch:
 
@@ -17,40 +19,53 @@ concurrency:
 
 jobs:
   build:
-    name: Compile and package Cold Clear
+    name: Compile original Cold Clear engine for the browser
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the pull request branch
+      - name: Check out the game branch
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
           persist-credentials: true
 
-      - name: Install Rust and the WebAssembly target
-        uses: dtolnay/rust-toolchain@master
+      - name: Install stable Rust and the WebAssembly target
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.56.0
           targets: wasm32-unknown-unknown
 
-      - name: Install the matching wasm-bindgen CLI
-        run: cargo install wasm-bindgen-cli --version 0.2.65 --locked
+      - name: Fetch the pinned original Cold Clear source
+        env:
+          COLD_CLEAR_REV: "279edd7c3177ff8077f6a930193397814b281f27"
+        run: |
+          git clone --filter=blob:none https://github.com/MinusKelvin/cold-clear.git "$RUNNER_TEMP/cold-clear"
+          git -C "$RUNNER_TEMP/cold-clear" checkout --detach "$COLD_CLEAR_REV"
+          git -C "$RUNNER_TEMP/cold-clear" apply "$GITHUB_WORKSPACE/cold-clear/patches/disable-hold.patch"
 
-      - name: Build the original Cold Clear engine for WebAssembly
+      - name: Build the original Cold Clear Tetris Bot Protocol adapter
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-        run: cargo build --release --manifest-path cold-clear-wasm/Cargo.toml --target wasm32-unknown-unknown
-
-      - name: Generate browser JavaScript bindings
-        run: wasm-bindgen --target no-modules --out-dir cold-clear --out-name cc_tbp target/wasm32-unknown-unknown/release/cc_tbp.wasm
-
-      - name: Verify the generated worker runtime
         run: |
+          cargo build --manifest-path "$RUNNER_TEMP/cold-clear/Cargo.toml" --release --target wasm32-unknown-unknown -p cc-tbp
+
+      - name: Install the matching wasm-bindgen CLI
+        run: |
+          VERSION="$(cargo tree --manifest-path "$RUNNER_TEMP/cold-clear/Cargo.toml" --target wasm32-unknown-unknown -p cc-tbp -i wasm-bindgen --depth 0 | sed -n 's/^wasm-bindgen v//p' | head -n 1)"
+          test -n "$VERSION"
+          cargo install wasm-bindgen-cli --version "$VERSION" --locked
+
+      - name: Generate browser worker bindings
+        run: |
+          wasm-bindgen --target no-modules --out-dir "$GITHUB_WORKSPACE/cold-clear" --out-name cc_tbp "$RUNNER_TEMP/cold-clear/target/wasm32-unknown-unknown/release/cc_tbp.wasm"
           test -s cold-clear/cc_tbp.js
           test -s cold-clear/cc_tbp_bg.wasm
           grep -q "_web_worker_entry_point" cold-clear/cc_tbp.js
           grep -q "start" cold-clear/cc_tbp.js
+          node --check cold-clear/cc_tbp.js
+          node --check cold-clear/main-worker.js
+          node --check cold-clear/worker.js
+          node --check game.js
 
-      - name: Commit the compiled WebAssembly runtime to this branch
+      - name: Commit the generated WebAssembly runtime to the pull request
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "Build Cold Clear WebAssembly runtime"
