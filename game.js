@@ -316,15 +316,15 @@
   function survivalLinesPerMinute(difficulty = selectedSurvivalDifficulty) {
     return SURVIVAL_LINES_PER_MINUTE[difficulty] || SURVIVAL_LINES_PER_MINUTE[1];
   }
-  // TETR.IO Tetra League rank averages (23 Aug 2026); paired tiers are blended.
-  // PPS controls piece cadence; APM and APP shape each bot's attack preference.
+  // Cold Clear supplies placement quality; these tiers control its search budget
+  // and deliberately slower in-game placement cadence.
   const BOT_TIERS = [
     null,
-    { rank: "D–D+", pps: 0.745, apm: 8.1, app: 0.18, pace: 1000/0.745, noise: 5.2, holes: 7.8, height: 0.42, attackWeight: 1.0 },
-    { rank: "C−–C", pps: 0.855, apm: 11.85, app: 0.23, pace: 1000/0.855, noise: 3.5, holes: 8.8, height: 0.52, attackWeight: 1.15 },
-    { rank: "LOW B", pps: 1.06, apm: 19.1, app: 0.30, pace: 1000/1.06, noise: 1.8, holes: 10.2, height: 0.64, attackWeight: 1.35 },
-    { rank: "A", pps: 1.27, apm: 28.4, app: 0.37, pace: 1000/1.27, noise: 0.65, holes: 12.0, height: 0.78, attackWeight: 1.65 },
-    { rank: "S+", pps: 1.75, apm: 56.4, app: 0.54, pace: 1000/1.75, noise: 0.08, holes: 14.5, height: 0.92, attackWeight: 2.1 }
+    { rank: "D–D+", pps: 0.38, apm: 8.1, app: 0.18, pace: 1000/0.38, maxNodes: 100000 },
+    { rank: "C−–C", pps: 0.48, apm: 11.85, app: 0.23, pace: 1000/0.48, maxNodes: 250000 },
+    { rank: "LOW B", pps: 0.60, apm: 19.1, app: 0.30, pace: 1000/0.60, maxNodes: 500000 },
+    { rank: "A", pps: 0.74, apm: 28.4, app: 0.37, pace: 1000/0.74, maxNodes: 1000000 },
+    { rank: "S+", pps: 0.90, apm: 56.4, app: 0.54, pace: 1000/0.90, maxNodes: 2000000 }
   ];
   try {
     const savedStats = JSON.parse(localStorage.getItem("stacklab-visible-stats") || "null");
@@ -379,9 +379,13 @@
       board: makeBoard(), queue: newQueue(), current: null, hold: null, combo: -1, b2b: 0, levelScore: 1,
       incoming: [], incomingClock: 1000, lines: 0, sent: 0, alive: true,
       pieces: 0, score: 0, dirty: true, lastGarbageHole: null,
-      clearPopupRemaining: 0, attackPopupRemaining: 0, cancelPopupRemaining: 0
+      clearPopupRemaining: 0, attackPopupRemaining: 0, cancelPopupRemaining: 0,
+      maxNodes: tier.maxNodes, engineWorker: null, engineReady: false,
+      enginePending: false, engineEpoch: 0, requestSequence: 0,
+      readyMove: null, engineError: ""
     };
     state.current = takeNext(state);
+    startColdClearBot(state);
     return state;
   }
   function showPage(pageId) {
@@ -428,6 +432,8 @@
     }
   }
   function resetMatch(autostart) {
+    bots.forEach(stopColdClearBot);
+    bots = [];
     player = createPlayer();
     if (currentMode === "cheese") seedCheese(player.board);
     bots = currentMode === "botplay"
@@ -489,6 +495,7 @@
     ended = true;
     started = false;
     paused = false;
+    bots.forEach(stopColdClearBot);
     held.clear();
     shift.dir = 0;
     $("pauseOverlay").classList.add("hidden");
@@ -977,9 +984,13 @@
     }
     if (removed.some(Boolean)) {
       if (isPlayer) playerTopOut();
-      else state.alive = false;
+      else {
+        state.alive = false;
+        stopColdClearBot(state);
+      }
       return;
     }
+    if (!isPlayer) restartColdClearBot(state);
     state.incomingClock = 310;
     if (isPlayer) {
       shake = Math.max(shake, 3);
@@ -1036,203 +1047,227 @@
     logEvent(bot.name + " → YOU  +" + amount + " GARBAGE", "danger");
   }
 
-  function evaluateBoard(board) {
-    const heights = [];
-    let holes = 0, aggregate = 0, bump = 0, rowTransitions = 0, coveredHoleDepth = 0;
-    for (let x = 0; x < W; x++) {
-      let height = 0, seen = false, columnHoles = 0;
-      for (let y = 0; y < H; y++) {
-        if (board[y][x]) {
-          if (!seen) { height = H - y; seen = true; }
-        } else if (seen) { holes++; columnHoles++; coveredHoleDepth += columnHoles; }
-      }
-      heights.push(height);
-      aggregate += height;
-    }
-    for (let x = 0; x < W - 1; x++) bump += Math.abs(heights[x] - heights[x + 1]);
-    for (let y = 0; y < H; y++) {
-      let previous = true;
-      for (let x = 0; x < W; x++) {
-        const occupied = Boolean(board[y][x]);
-        if (occupied !== previous) rowTransitions++;
-        previous = occupied;
-      }
-      if (!previous) rowTransitions++;
-    }
-    let wells = 0;
-    for (let x = 0; x < W; x++) {
-      const left = x === 0 ? H : heights[x - 1];
-      const right = x === W - 1 ? H : heights[x + 1];
-      wells += Math.max(0, Math.min(left,right) - heights[x]);
-    }
-    return { holes, aggregate, bump, maxHeight: Math.max(...heights), rowTransitions, coveredHoleDepth, wells, heights };
-  }
-  function botBoardValue(board, bot) {
-    const m = evaluateBoard(board);
-    return -m.holes * bot.holeWeight
-      -m.coveredHoleDepth * (bot.holeWeight * 0.38)
-      -m.aggregate * 0.34
-      -m.bump * 0.28
-      -m.rowTransitions * 0.16
-      -m.maxHeight * bot.heightWeight
-      -m.wells * 0.32;
-  }
-  function tetrisWellPotential(metrics) {
-    const heights = metrics.heights;
-    const depths = heights.map((height, x) => {
-      const left = x === 0 ? heights[1] : heights[x - 1];
-      const right = x === W - 1 ? heights[W - 2] : heights[x + 1];
-      return Math.max(0, Math.min(left, right) - height);
-    }).sort((a, b) => b - a);
-    const mainWell = Math.max(0, (depths[0] || 0) - 1);
-    const extraWells = depths.slice(1).filter((depth) => depth >= 2).length;
-    return mainWell * 4.2 - extraWells * 2.8;
-  }
-  function botStrategyFor(bot, stackHeight) {
-    if (bot.level <= 2) return "tetris";
-    if (bot.level === 3 || bot.level === 4) return stackHeight >= 12 ? "downstack" : "tetris";
-    if (stackHeight <= 7) return "spin";
-    if (stackHeight >= 14) return "downstack";
-    return "tetris";
-  }
-  function enumerateBotPlacements(board, type) {
-    const piece = makePiece(type);
-    const candidates = [];
-    const seen = new Set();
-    for (let rot = 0; rot < 4; rot++) {
-      const shapeKey = SHAPES[type][rot].map((c) => c.join(",")).sort().join(";");
-      if (seen.has(shapeKey)) continue;
-      seen.add(shapeKey);
-      for (let x = -2; x < W; x++) {
-        let y = 0;
-        if (collides(board, piece, x, y, rot)) continue;
-        while (!collides(board, piece, x, y + 1, rot)) y++;
-        const trial = cloneBoard(board);
-        if (!mergePiece(trial, { ...piece, x, y, rot })) continue;
-        const lines = clearLines(trial);
-        // The bot plans the final orientation directly, so every T placement
-        // can be treated as a deliberate rotation when checking spin corners.
-        const rotated = { ...piece, x, y, rot, lastRotate: type === "T" || rot !== 0, kick: 0 };
-        const spin = classifySpin(rotated, board);
-        candidates.push({ board: trial, lines, x, y, rot, spin, drop: Math.max(0,y-piece.y) });
-      }
-    }
-    return candidates;
-  }
-  function botPlacementValue(candidate, bot, combo = bot.combo, b2b = bot.b2b, referenceMetrics = null, strategyOverride = null) {
-    const difficult = (candidate.spin !== "—" && candidate.lines > 0) || candidate.lines === 4;
-    const nextCombo = candidate.lines > 0 ? combo + 1 : -1;
-    const attack = attackFor(candidate.lines,candidate.spin || "—",nextCombo,difficult ? b2b : 0);
-    const clearValue = [0,1.5,5.5,10.5,17][candidate.lines] || 0;
-    const spinValue = candidate.spin === "T-SPIN" ? 8 :
-      candidate.spin === "MINI T-SPIN" || candidate.spin === "ALL-SPIN" ? 2.5 : 0;
-    const allClear = candidate.lines > 0 && candidate.board.every((row) => row.every((cell) => !cell));
-    const currentAPM = bot.sent / Math.max(runElapsed / 60000,0.1);
-    const apmPressure = Math.max(0.75,Math.min(2.4,bot.targetAPM / Math.max(1,currentAPM)));
-    const attackWeight = bot.attackWeight * apmPressure * (1 + bot.targetAPP);
-    const currentMetrics = referenceMetrics || bot.strategyMetrics || evaluateBoard(bot.board);
-    const nextMetrics = evaluateBoard(candidate.board);
-    const stackDrop = Math.max(0, currentMetrics.maxHeight - nextMetrics.maxHeight);
-    const aggregateDrop = Math.max(0, currentMetrics.aggregate - nextMetrics.aggregate);
-    const strategy = strategyOverride || botStrategyFor(bot, currentMetrics.maxHeight);
-    let strategyBonus = 0;
+  const COLD_CLEAR_SHAPES = {
+    I: [[-1,0],[0,0],[1,0],[2,0]],
+    O: [[0,0],[1,0],[0,1],[1,1]],
+    T: [[-1,0],[0,0],[1,0],[0,1]],
+    L: [[-1,0],[0,0],[1,0],[1,1]],
+    J: [[-1,0],[0,0],[1,0],[-1,1]],
+    S: [[-1,0],[0,0],[0,1],[1,1]],
+    Z: [[-1,1],[0,1],[0,0],[1,0]]
+  };
 
-    if (strategy === "tetris") {
-      const tetrisFocus = bot.level <= 2 ? 1 : bot.level === 5 ? 0.95 : bot.level === 4 ? 0.78 : 0.72;
-      if (candidate.lines === 4) strategyBonus += bot.level <= 2 ? 112 : bot.level === 5 ? 88 : 62;
-      else if (candidate.lines > 0) strategyBonus -= candidate.lines * (bot.level <= 2 ? 8 : 3.5);
-      strategyBonus += tetrisWellPotential(nextMetrics) * (bot.level <= 2 ? 1.15 : 1.0) * tetrisFocus;
-      if (candidate.spin === "T-SPIN" && candidate.lines > 0 && bot.level <= 2) strategyBonus -= 17;
-    } else if (strategy === "downstack") {
-      strategyBonus += candidate.lines * (bot.level === 5 ? 25 : 19);
-      strategyBonus += stackDrop * 8 + aggregateDrop * 0.24;
-      if (candidate.spin === "T-SPIN" && candidate.lines > 0) strategyBonus += bot.level === 5 ? 9 : 4;
-    } else if (strategy === "spin") {
-      if (candidate.spin === "T-SPIN") {
-        strategyBonus += candidate.lines === 3 ? 112
-          : candidate.lines === 2 ? 88
-          : candidate.lines === 1 ? 48 : 12;
-      } else if (candidate.lines === 4) {
-        strategyBonus += 32;
-      }
-      strategyBonus += tetrisWellPotential(nextMetrics) * 0.28;
-    }
-
-    // Level 4 occasionally takes a T-spin-double opportunity whether it is
-    // currently building a Tetris well or clearing a dangerous stack.
-    if (bot.level === 4 && bot.spinDoubleHunt && candidate.spin === "T-SPIN" && candidate.lines === 2) {
-      strategyBonus += 54;
-    }
-
-    return botBoardValue(candidate.board,bot) + clearValue + spinValue
-      + attack * attackWeight * 3.1 + strategyBonus + (allClear ? 35 : 0) - candidate.drop * 0.012;
+  function coldClearField(board) {
+    // Cold Clear stores row zero at the floor and has a 40-row field.
+    return Array.from({ length: 40 }, (_, y) => {
+      if (y >= H) return Array(W).fill(false);
+      return board[H - 1 - y].map(Boolean);
+    });
   }
-  function bestBotPlacement(bot) {
-    bot.strategyMetrics = evaluateBoard(bot.board);
-    bot.strategyMode = botStrategyFor(bot, bot.strategyMetrics.maxHeight);
-    // Level 4 only actively hunts T-spin doubles on some turns, preserving its
-    // stronger Tetris/downstack identity the rest of the time.
-    bot.spinDoubleHunt = bot.level === 4 && bot.strategyMetrics.maxHeight < 16 && Math.random() < 0.18;
-    const placements = enumerateBotPlacements(bot.board,bot.current.type);
-    if (!placements.length) return null;
-    const tier = BOT_TIERS[bot.level] || BOT_TIERS[3];
-    const width = bot.level >= 5 ? 16 : bot.level >= 4 ? 10 : bot.level >= 3 ? 8 : 7;
-    const ranked = placements.map((p) => ({p,value:botPlacementValue(p,bot)}))
-      .sort((a,b) => b.value-a.value).slice(0,width);
-    let best = ranked[0].p, bestValue = -Infinity;
-    for (const first of ranked) {
-      let value = first.value;
-      const nextType = bot.queue[0];
-      if (nextType) {
-        const next = enumerateBotPlacements(first.p.board,nextType);
-        const firstMetrics = evaluateBoard(first.p.board);
-        const nextStrategy = botStrategyFor(bot, firstMetrics.maxHeight);
-        let nextBest = -Infinity;
-        for (const second of next) {
-          const nextB2B = ((first.p.spin !== "—" && first.p.lines > 0) || first.p.lines === 4) ? bot.b2b + 1 : bot.b2b;
-          let secondValue = botPlacementValue(second,bot,first.p.lines > 0 ? bot.combo + 1 : -1,nextB2B,firstMetrics,nextStrategy);
-          if (bot.level >= 5 && bot.queue[1]) {
-            const third = enumerateBotPlacements(second.board,bot.queue[1]);
-            const secondMetrics = evaluateBoard(second.board);
-            const thirdStrategy = botStrategyFor(bot, secondMetrics.maxHeight);
-            let thirdBest = -Infinity;
-            for (const option of third) {
-              thirdBest = Math.max(thirdBest,botPlacementValue(option,bot,bot.combo,bot.b2b,secondMetrics,thirdStrategy));
-            }
-            if (Number.isFinite(thirdBest)) secondValue += thirdBest * 0.22;
-          }
-          if (secondValue > nextBest) nextBest = secondValue;
+  function coldClearStartMessage(bot) {
+    return {
+      type: "start",
+      epoch: bot.engineEpoch,
+      board: coldClearField(bot.board),
+      queue: [bot.current.type, ...bot.queue],
+      hold: bot.hold || null,
+      combo: Math.max(0, bot.combo + 1),
+      back_to_back: bot.b2b > 0,
+      max_nodes: bot.maxNodes
+    };
+  }
+  function postColdClear(bot, message) {
+    if (!bot.engineWorker) return false;
+    try {
+      bot.engineWorker.postMessage(JSON.stringify(message));
+      return true;
+    } catch (error) {
+      bot.engineError = String(error);
+      return false;
+    }
+  }
+  function requestColdClearMove(bot) {
+    if (!bot.alive || !bot.engineWorker || !bot.engineReady ||
+        bot.enginePending || bot.readyMove || bot.engineError) return;
+    const requestId = ++bot.requestSequence;
+    bot.enginePending = true;
+    postColdClear(bot, {
+      type: "suggest",
+      epoch: bot.engineEpoch,
+      request_id: requestId
+    });
+  }
+  function startColdClearBot(bot) {
+    if (!bot || !bot.alive) return;
+    stopColdClearBot(bot);
+    bot.engineEpoch++;
+    bot.engineReady = false;
+    bot.enginePending = false;
+    bot.readyMove = null;
+    bot.engineError = "";
+    try {
+      const worker = new Worker("/cold-clear/main-worker.js");
+      bot.engineWorker = worker;
+      worker.onmessage = (event) => {
+        let message;
+        try {
+          message = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+        } catch (error) {
+          bot.engineError = "Invalid response from Cold Clear: " + String(error);
+          return;
         }
-        if (Number.isFinite(nextBest)) value += nextBest * (bot.level >= 4 ? 0.78 : 0.58);
-      }
-      value += (Math.random() - 0.5) * tier.noise;
-      if (value > bestValue) { bestValue = value; best = first.p; }
+        if (!message || typeof message !== "object") return;
+        if (message.type === "ready") {
+          bot.engineReady = true;
+          requestColdClearMove(bot);
+        } else if (message.type === "suggestion") {
+          bot.enginePending = false;
+          if (message.epoch !== bot.engineEpoch) {
+            // A board reset superseded this search. Wait until the restarted
+            // engine signals ready, then ask it for a fresh placement.
+            if (bot.engineReady) requestColdClearMove(bot);
+            return;
+          }
+          bot.readyMove = message;
+        } else if (message.type === "dead") {
+          bot.enginePending = false;
+          if (message.epoch === bot.engineEpoch) {
+            bot.engineError = "Cold Clear could not find a legal placement.";
+          }
+        } else if (message.type === "error") {
+          bot.enginePending = false;
+          bot.engineReady = false;
+          bot.engineError = message.message || "Cold Clear failed.";
+          console.error("Cold Clear:", bot.engineError);
+          logEvent("COLD CLEAR ERROR  ·  " + bot.engineError, "danger");
+        }
+      };
+      worker.onerror = (event) => {
+        bot.enginePending = false;
+        bot.engineReady = false;
+        bot.engineError = event.message || "Cold Clear worker failed to load.";
+        console.error("Cold Clear worker error:", event);
+        logEvent("COLD CLEAR WORKER FAILED TO LOAD", "danger");
+      };
+      postColdClear(bot, coldClearStartMessage(bot));
+    } catch (error) {
+      bot.engineError = "Cold Clear could not start: " + String(error);
+      console.error("Cold Clear startup failed:", error);
     }
-    return best;
   }
+  function restartColdClearBot(bot) {
+    if (!bot.engineWorker || !bot.alive) return;
+    bot.engineEpoch++;
+    bot.engineReady = false;
+    bot.readyMove = null;
+    postColdClear(bot, coldClearStartMessage(bot));
+  }
+  function stopColdClearBot(bot) {
+    if (!bot || !bot.engineWorker) return;
+    try { bot.engineWorker.postMessage(JSON.stringify({ type: "quit" })); } catch (_) {}
+    bot.engineWorker.terminate();
+    bot.engineWorker = null;
+    bot.engineReady = false;
+    bot.enginePending = false;
+    bot.readyMove = null;
+  }
+  function takeBotNext(bot) {
+    const before = bot.queue.length;
+    const piece = takeNext(bot);
+    const remainingBeforeRefill = before - 1;
+    if (bot.queue.length > remainingBeforeRefill) {
+      for (const type of bot.queue.slice(remainingBeforeRefill)) {
+        postColdClear(bot, { type: "new_piece", piece: type });
+      }
+    }
+    return piece;
+  }
+  function coldClearCells(move) {
+    const base = COLD_CLEAR_SHAPES[move.piece];
+    if (!base) return null;
+    const rotation = move.orientation;
+    const points = base.map(([dx, dy]) => {
+      let rx = dx, ry = dy;
+      if (rotation === "east") [rx, ry] = [dy, -dx];
+      else if (rotation === "south") [rx, ry] = [-dx, -dy];
+      else if (rotation === "west") [rx, ry] = [-dy, dx];
+      return [move.x + rx, H - 1 - (move.y + ry)];
+    });
+    return points;
+  }
+  function botPlacementError(bot, message) {
+    bot.engineError = message;
+    bot.readyMove = null;
+    bot.enginePending = false;
+    console.error("Cold Clear placement rejected:", message);
+    logEvent("COLD CLEAR PLACEMENT ERROR", "danger");
+  }
+
   function botStep(bot) {
-    if (!bot.alive) return;
-    const best = bestBotPlacement(bot);
-    if (!best) { bot.alive = false; return; }
-    const spin = best.spin || "—";
-    const difficult = (spin !== "—" && best.lines > 0) || best.lines === 4;
+    if (!bot.alive || !bot.readyMove) return;
+    const best = bot.readyMove;
+    bot.readyMove = null;
+
+    // Cold Clear can choose hold as part of its search. Mirror that operation
+    // in the visible bot state before applying the returned landing position.
+    if (best.hold) {
+      if (bot.hold) {
+        const heldPiece = bot.hold;
+        bot.hold = bot.current.type;
+        bot.current = makePiece(heldPiece);
+      } else {
+        bot.hold = bot.current.type;
+        bot.current = takeBotNext(bot);
+      }
+    }
+    if (best.piece !== bot.current.type) {
+      botPlacementError(bot, "The selected piece did not match the active queue.");
+      restartColdClearBot(bot);
+      return;
+    }
+
+    const cells = coldClearCells(best);
+    if (!cells || cells.length !== 4) {
+      botPlacementError(bot, "Cold Clear returned an unsupported piece placement.");
+      return;
+    }
+    const nextBoard = cloneBoard(bot.board);
+    for (const [x, y] of cells) {
+      if (x < 0 || x >= W || y < 0 || y >= H) {
+        bot.alive = false;
+        stopColdClearBot(bot);
+        return;
+      }
+      if (nextBoard[y][x]) {
+        botPlacementError(bot, "Cold Clear returned a placement that overlaps the game board.");
+        restartColdClearBot(bot);
+        return;
+      }
+      nextBoard[y][x] = best.piece;
+    }
+
+    const spin = best.spin === "full" ? "T-SPIN"
+      : best.spin === "mini" ? "MINI T-SPIN" : "—";
+    const lines = clearLines(nextBoard);
+    const difficult = (spin !== "—" && lines > 0) || lines === 4;
     const wasB2B = difficult && bot.b2b > 0;
     const b2bBonus = difficult ? bot.b2b : 0;
-    if (best.lines > 0) bot.combo++;
+    if (lines > 0) bot.combo++;
     else bot.combo = -1;
     if (difficult) bot.b2b++;
-    else if (best.lines > 0) bot.b2b = 0;
-    const attack = attackFor(best.lines, spin, bot.combo, b2bBonus);
-    bot.board = best.board;
+    else if (lines > 0) bot.b2b = 0;
+    const attack = attackFor(lines, spin, bot.combo, b2bBonus);
+
+    bot.board = nextBoard;
     bot.dirty = true;
-    bot.lines += best.lines;
+    bot.lines += lines;
     bot.levelScore = 1 + Math.floor(bot.lines / 10);
     bot.pieces++;
-    const allClear = best.lines > 0 && best.board.every((row) => row.every((cell) => !cell));
-    bot.score += scoreFor(best.lines, spin, bot.levelScore, wasB2B, allClear)
-      + (best.lines ? bot.combo * 50 * bot.levelScore : 0)
-      + Math.max(0,best.drop || 0) * 2;
-    const clearMessage = clearLabelFor(best.lines, spin);
+    const allClear = lines > 0 && nextBoard.every((row) => row.every((cell) => !cell));
+    bot.score += scoreFor(lines, spin, bot.levelScore, wasB2B, allClear)
+      + (lines ? bot.combo * 50 * bot.levelScore : 0);
+
+    const clearMessage = clearLabelFor(lines, spin);
     if (clearMessage) {
       const popup = $("botClearPopup");
       popup.textContent = clearMessage;
@@ -1246,9 +1281,15 @@
       sendBotAttack(bot, unblockedAttack);
       showBotBoardPopup(bot, "attack", unblockedAttack);
     }
-    if (best.lines && Math.random() < 0.4) logEvent("OPPONENT CLEARED " + best.lines + " LINES.", "muted");
-    bot.current = takeNext(bot);
-    if (collides(bot.board, bot.current)) bot.alive = false;
+    if (lines && Math.random() < 0.4) logEvent("OPPONENT CLEARED " + lines + " LINES.", "muted");
+
+    bot.current = takeBotNext(bot);
+    if (collides(bot.board, bot.current)) {
+      bot.alive = false;
+      stopColdClearBot(bot);
+    } else {
+      requestColdClearMove(bot);
+    }
   }
   function updateBots(dt) {
     if (currentMode !== "botplay" || !bots.length || ended) return;
@@ -1262,9 +1303,11 @@
           if (bot[timer] === 0) $(id).classList.remove("visible");
         }
       }
-      bot.clock += dt;
-      if (bot.clock >= bot.pace) {
-        bot.clock -= bot.pace;
+      // The search runs off-thread. This independent clock sets the bot's
+      // in-game speed and prevents fast searches from locking faster than its tier.
+      bot.clock = Math.min(bot.pace, bot.clock + dt);
+      if (bot.clock >= bot.pace && bot.readyMove) {
+        bot.clock = 0;
         botStep(bot);
       }
     }
@@ -1548,14 +1591,17 @@
       $("botComboHud").classList.toggle("active", bot.combo >= 0);
       $("botHoldHint").textContent = bot.hold ? "READY TO SWAP" : "EMPTY";
       $("botSpeedLabel").textContent = bot.targetPPS.toFixed(2) + " PPS";
-      $("botState0").textContent = !bot.alive ? "TOPPED OUT" : started ? "RUN IN PROGRESS" : "READY";
+      $("botState0").textContent = bot.engineError ? "ENGINE ERROR" : !bot.alive ? "TOPPED OUT" : !bot.engineReady ? "LOADING COLD CLEAR" : started ? "RUN IN PROGRESS" : "READY";
       $("botRunObjective").textContent = "LEVEL " + selectedBotLevel + " · " + bot.rank;
     }
     $("speedLabel").textContent = currentMode === "survival"
       ? survivalLinesPerMinute() + " LINES / MIN"
       : (950 / gravityInterval(player.level)).toFixed(1) + "× GRAVITY";
     $("pauseButton").innerHTML = paused ? "▶ <span>RESUME</span>" : "Ⅱ <span>PAUSE</span>";
-    $("battleStatus").textContent = ended ? "RUN COMPLETE" : paused ? "PAUSED" : started ? "RUN IN PROGRESS" : "READY";
+    $("battleStatus").textContent = ended ? "RUN COMPLETE" : paused ? "PAUSED"
+      : currentMode === "botplay" && bots[0]?.engineError ? "COLD CLEAR ERROR"
+      : currentMode === "botplay" && bots[0] && !bots[0].engineReady ? "LOADING COLD CLEAR"
+      : started ? "RUN IN PROGRESS" : "READY";
     if (currentMode === "sprint") $("runObjective").textContent = "CLEAR " + Math.max(0, 40 - player.lines) + " MORE LINES";
     else if (currentMode === "cheese") $("runObjective").textContent = "DIG " + Math.max(0, 100 - player.lines) + " MORE LINES";
     else if (currentMode === "blitz") $("runObjective").textContent = "TIME LEFT · " + formatTime(blitzRemaining);
