@@ -1058,28 +1058,27 @@
   };
 
   function coldClearField(board) {
-    // Cold Clear stores row zero at the floor and has a 40-row field.
-    return Array.from({ length: 40 }, (_, y) => {
-      if (y >= H) return Array(W).fill(false);
-      return board[H - 1 - y].map(Boolean);
-    });
+    // Cold Clear's protocol numbers rows from the floor upward. The browser
+    // game stores them from the ceiling downward and has a 20-row visible field.
+    return Array.from({ length: 40 }, (_, y) =>
+      y < H ? board[H - 1 - y].map((cell) => cell ? "G" : null) : Array(W).fill(null)
+    );
   }
   function coldClearStartMessage(bot) {
     return {
       type: "start",
-      epoch: bot.engineEpoch,
       board: coldClearField(bot.board),
       queue: [bot.current.type, ...bot.queue],
-      hold: bot.hold || null,
+      hold: null,
       combo: Math.max(0, bot.combo + 1),
       back_to_back: bot.b2b > 0,
-      max_nodes: bot.maxNodes
+      randomizer: { type: "unknown" }
     };
   }
   function postColdClear(bot, message) {
     if (!bot.engineWorker) return false;
     try {
-      bot.engineWorker.postMessage(JSON.stringify(message));
+      bot.engineWorker.postMessage(message);
       return true;
     } catch (error) {
       bot.engineError = String(error);
@@ -1089,18 +1088,14 @@
   function requestColdClearMove(bot) {
     if (!bot.alive || !bot.engineWorker || !bot.engineReady ||
         bot.enginePending || bot.readyMove || bot.engineError) return;
-    const requestId = ++bot.requestSequence;
     bot.enginePending = true;
-    postColdClear(bot, {
-      type: "suggest",
-      epoch: bot.engineEpoch,
-      request_id: requestId
-    });
+    postColdClear(bot, { type: "suggest" });
   }
   function startColdClearBot(bot) {
     if (!bot || !bot.alive) return;
     stopColdClearBot(bot);
     bot.engineEpoch++;
+    const epoch = bot.engineEpoch;
     bot.engineReady = false;
     bot.enginePending = false;
     bot.readyMove = null;
@@ -1109,58 +1104,57 @@
       const worker = new Worker("/cold-clear/main-worker.js");
       bot.engineWorker = worker;
       worker.onmessage = (event) => {
-        let message;
-        try {
-          message = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
-        } catch (error) {
-          bot.engineError = "Invalid response from Cold Clear: " + String(error);
-          return;
-        }
+        if (epoch !== bot.engineEpoch) return;
+        const message = event.data;
         if (!message || typeof message !== "object") return;
-        if (message.type === "ready") {
+        if (message.type === "info") {
+          postColdClear(bot, { type: "rules", randomizer: "seven_bag" });
+        } else if (message.type === "ready") {
           bot.engineReady = true;
+          // Start and Suggest are queued in order. The protocol adapter waits
+          // for its internal search worker before it consumes the Suggest.
+          postColdClear(bot, coldClearStartMessage(bot));
           requestColdClearMove(bot);
         } else if (message.type === "suggestion") {
           bot.enginePending = false;
-          if (message.epoch !== bot.engineEpoch) {
-            // A board reset superseded this search. Wait until the restarted
-            // engine signals ready, then ask it for a fresh placement.
-            if (bot.engineReady) requestColdClearMove(bot);
+          const move = Array.isArray(message.moves) ? message.moves[0] : null;
+          if (!move || !move.location) {
+            bot.alive = false;
+            stopColdClearBot(bot);
             return;
           }
-          bot.readyMove = message;
-        } else if (message.type === "dead") {
-          bot.enginePending = false;
-          if (message.epoch === bot.engineEpoch) {
-            bot.engineError = "Cold Clear could not find a legal placement.";
-          }
+          bot.readyMove = {
+            piece: move.location.type,
+            orientation: move.location.orientation,
+            x: move.location.x,
+            y: move.location.y,
+            spin: move.spin,
+            protocolMove: move
+          };
         } else if (message.type === "error") {
           bot.enginePending = false;
           bot.engineReady = false;
-          bot.engineError = message.message || "Cold Clear failed.";
+          bot.engineError = JSON.stringify(message.reason || message);
           console.error("Cold Clear:", bot.engineError);
-          logEvent("COLD CLEAR ERROR  ·  " + bot.engineError, "danger");
+          logEvent("COLD CLEAR ERROR", "danger");
         }
       };
       worker.onerror = (event) => {
+        if (epoch !== bot.engineEpoch) return;
         bot.enginePending = false;
         bot.engineReady = false;
         bot.engineError = event.message || "Cold Clear worker failed to load.";
         console.error("Cold Clear worker error:", event);
         logEvent("COLD CLEAR WORKER FAILED TO LOAD", "danger");
       };
-      postColdClear(bot, coldClearStartMessage(bot));
     } catch (error) {
       bot.engineError = "Cold Clear could not start: " + String(error);
       console.error("Cold Clear startup failed:", error);
     }
   }
   function restartColdClearBot(bot) {
-    if (!bot.engineWorker || !bot.alive) return;
-    bot.engineEpoch++;
-    bot.engineReady = false;
-    bot.readyMove = null;
-    postColdClear(bot, coldClearStartMessage(bot));
+    if (!bot || !bot.alive) return;
+    startColdClearBot(bot);
   }
   function stopColdClearBot(bot) {
     if (!bot || !bot.engineWorker) return;
@@ -1186,14 +1180,13 @@
     const base = COLD_CLEAR_SHAPES[move.piece];
     if (!base) return null;
     const rotation = move.orientation;
-    const points = base.map(([dx, dy]) => {
+    return base.map(([dx, dy]) => {
       let rx = dx, ry = dy;
       if (rotation === "east") [rx, ry] = [dy, -dx];
       else if (rotation === "south") [rx, ry] = [-dx, -dy];
       else if (rotation === "west") [rx, ry] = [-dy, dx];
       return [move.x + rx, H - 1 - (move.y + ry)];
     });
-    return points;
   }
   function botPlacementError(bot, message) {
     bot.engineError = message;
@@ -1208,18 +1201,8 @@
     const best = bot.readyMove;
     bot.readyMove = null;
 
-    // Cold Clear can choose hold as part of its search. Mirror that operation
-    // in the visible bot state before applying the returned landing position.
-    if (best.hold) {
-      if (bot.hold) {
-        const heldPiece = bot.hold;
-        bot.hold = bot.current.type;
-        bot.current = makePiece(heldPiece);
-      } else {
-        bot.hold = bot.current.type;
-        bot.current = takeBotNext(bot);
-      }
-    }
+    // Hold is disabled in the bundled TBP adapter so the bot and visible
+    // queue stay in lockstep with the existing game implementation.
     if (best.piece !== bot.current.type) {
       botPlacementError(bot, "The selected piece did not match the active queue.");
       restartColdClearBot(bot);
@@ -1283,6 +1266,8 @@
     }
     if (lines && Math.random() < 0.4) logEvent("OPPONENT CLEARED " + lines + " LINES.", "muted");
 
+    // Confirm the exact landing with Cold Clear before it plans the next piece.
+    postColdClear(bot, { type: "play", move: best.protocolMove });
     bot.current = takeBotNext(bot);
     if (collides(bot.board, bot.current)) {
       bot.alive = false;
