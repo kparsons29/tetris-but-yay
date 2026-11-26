@@ -778,8 +778,10 @@
     const frontCount = Number(corners[front[0]]) + Number(corners[front[1]]);
     return frontCount === 2 || piece.kick === 3 ? "T-SPIN" : "MINI T-SPIN";
   }
-  // Non-T immobile spins use TETR.IO-style All-Spin behaviour:
-  // they keep the normal clear attack value, but qualify as difficult clears.
+  // TETR.IO-style All-Mini+ spin detection:
+  // T pieces use the 3-corner rule, but an immobile T also counts as at least
+  // a mini. Other pieces count as all-spins when they are immobile after
+  // rotating. All-spins keep the normal clear attack value.
   function canMoveSpinPiece(board, piece, dx, dy) {
     for (const [cx,cy] of SHAPES[piece.type][piece.rot]) {
       const x = piece.x + cx + dx, y = piece.y + cy + dy;
@@ -790,16 +792,22 @@
     return true;
   }
   function classifySpin(piece, board) {
-    // A spin only counts when the last action was a rotation and the piece is
-    // grounded. T pieces then use the 3-corner test; non-T pieces must be
-    // completely immobile in all four cardinal directions.
+    // Spins require a successful rotation and a grounded piece.
     if (!piece.lastRotate || canMoveSpinPiece(board, piece, 0, 1)) return "—";
-    if (piece.type === "T") return classifyTSpin(piece, board);
-    const canMove = canMoveSpinPiece(board, piece, -1, 0)
-      || canMoveSpinPiece(board, piece, 1, 0)
-      || canMoveSpinPiece(board, piece, 0, -1)
-      || canMoveSpinPiece(board, piece, 0, 1);
-    return canMove ? "—" : "ALL-SPIN";
+
+    // A full T-spin takes priority. A mini T-spin is also awarded by the
+    // 3-corner rule, even if the T can still move horizontally or upward.
+    const tSpin = piece.type === "T" ? classifyTSpin(piece, board) : "—";
+    if (tSpin === "T-SPIN") return tSpin;
+
+    // The immobility rule applies to T pieces as well as the other six pieces.
+    // This catches trapped T rotations that do not satisfy the 3-corner test.
+    const immobile = !canMoveSpinPiece(board, piece, -1, 0)
+      && !canMoveSpinPiece(board, piece, 1, 0)
+      && !canMoveSpinPiece(board, piece, 0, -1)
+      && !canMoveSpinPiece(board, piece, 0, 1);
+    if (immobile) return piece.type === "T" ? "MINI T-SPIN" : "ALL-SPIN";
+    return tSpin;
   }
   // Tetris 99-style base garbage and combo bonuses.
   // Combo 0 is the first consecutive line clear; combo 1 is the second.
