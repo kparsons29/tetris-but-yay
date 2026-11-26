@@ -125,15 +125,15 @@ export class RoomManager {
     if (role === "playing" && playing >= 2) return this.error(client, "Both player slots are already taken.");
     member.role = role;
     member.ready = false;
-    if (role === "spectating") this.promoteWaitingSpectator(room);
+    if (role === "spectating") this.promoteWaitingSpectator(room, client.userId);
     this.resetReady(room);
     this.roomChanged(room);
   }
 
-  promoteWaitingSpectator(room) {
+  promoteWaitingSpectator(room, excludeUserId = null) {
     if ([...room.members.values()].filter(member => member.role === "playing").length >= 2) return;
     const next = [...room.members.values()]
-      .filter(member => member.role === "spectating")
+      .filter(member => member.role === "spectating" && member.userId !== excludeUserId)
       .sort((a, b) => a.joinedAt - b.joinedAt)[0];
     if (next) { next.role = "playing"; next.ready = false; }
   }
@@ -144,6 +144,11 @@ export class RoomManager {
     const member = room.members.get(client.userId);
     if (!member || member.role !== "playing") return this.error(client, "Only active players can ready up.");
     member.ready = Boolean(ready);
+    if (!member.ready && room.countdownTimer) {
+      clearTimeout(room.countdownTimer);
+      room.countdownTimer = null;
+      room.countdownEndsAt = null;
+    }
     const players = [...room.members.values()].filter(item => item.role === "playing");
     this.roomChanged(room);
     if (players.length === 2 && players.every(item => item.ready)) this.beginCountdown(room);
