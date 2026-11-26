@@ -2,21 +2,20 @@
 
 ## Cold Clear
 
-The bot engine is based on the original Cold Clear project by MinusKelvin:
+The bot engine is the original Cold Clear project by MinusKelvin:
 https://github.com/MinusKelvin/cold-clear
 
-The WebAssembly wrapper links the Cold Clear engine and libtetris from upstream
-revision `7cb2f8d`. Cold Clear is licensed under the Mozilla Public License,
-version 2.0 (MPL-2.0). The upstream license text is available at:
-https://github.com/MinusKelvin/cold-clear/blob/master/LICENSE
+This project builds the `cold-clear`, `libtetris`, and `cc-tbp` crates from
+upstream revision `279edd7c3177ff8077f6a930193397814b281f27`. The original
+search engine and its board evaluation are not reimplementations.
 
-The generated Cold Clear WebAssembly files are compiled from that upstream
-source. They are not a reimplementation of the Cold Clear search algorithm.
+The build applies the small patch in `cold-clear/patches/disable-hold.patch`
+to the upstream TBP adapter. Hold is disabled because TBP v1.0's suggestion
+message does not report whether the engine used hold, and the game needs
+unambiguous queue synchronization. The underlying Cold Clear search engine
+is otherwise built from the pinned upstream source.
 
-## webutil
-
-Cold Clear's browser worker implementation uses the upstream `webutil` crate,
-which is part of the Cold Clear dependency tree:
-https://github.com/MinusKelvin/webutil
-
-See the upstream repository for its applicable license and copyright notices.
+Cold Clear is licensed under the Mozilla Public License, version 2.0
+(MPL-2.0). The license text is included at `licenses/MPL-2.0.txt`.
+The upstream source and build instructions are available at the repository
+URL above.
