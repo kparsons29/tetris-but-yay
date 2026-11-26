@@ -1,0 +1,41 @@
+name: Multiplayer checks
+
+on:
+  pull_request:
+    paths:
+      - "game.js"
+      - "multiplayer.js"
+      - "stacklab-config.js"
+      - "index.html"
+      - "styles.css"
+      - "server/**"
+      - ".github/workflows/multiplayer-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  multiplayer:
+    name: Syntax and room-manager tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check browser JavaScript syntax
+        run: |
+          node --check game.js
+          node --check multiplayer.js
+          node --check stacklab-config.js
+      - name: Install backend dependencies
+        working-directory: server
+        run: npm install --no-audit --no-fund
+      - name: Check server JavaScript syntax
+        run: |
+          node --check server/index.js
+          node --check server/room-manager.js
+          node --check server/test/room-manager.test.js
+      - name: Test room and role rules
+        working-directory: server
+        run: npm test
