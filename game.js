@@ -374,8 +374,8 @@
     const tier = BOT_TIERS[level] || BOT_TIERS[3];
     const state = {
       index, name, difficulty, level, rank: tier.rank,
-      pace: tier.pace, clock: 0, noise: tier.noise, holeWeight: tier.holes, heightWeight: tier.height,
-      targetPPS: tier.pps, targetAPM: tier.apm, targetAPP: tier.app, attackWeight: tier.attackWeight,
+      pace: tier.pace, clock: 0,
+      targetPPS: tier.pps, targetAPM: tier.apm, targetAPP: tier.app,
       board: makeBoard(), queue: newQueue(), current: null, hold: null, combo: -1, b2b: 0, levelScore: 1,
       incoming: [], incomingClock: 1000, lines: 0, sent: 0, alive: true,
       pieces: 0, score: 0, dirty: true, lastGarbageHole: null,
