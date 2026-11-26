@@ -35,7 +35,7 @@ pub fn start() {
             let message: Value = match serde_json::from_str(&raw) {
                 Ok(value) => value,
                 Err(error) => {
-                    post(&scope, json!({ "type": "error", "message": format!("Invalid message: {error}") }));
+                    post(&scope, json!({ "type": "error", "message": format!("Invalid message: {}", error) }));
                     continue;
                 }
             };
@@ -55,6 +55,7 @@ pub fn start() {
                     }
                 }
                 "suggest" => {
+                    let request_id = message["request_id"].as_u64().unwrap_or(0);
                     if let Some(bot) = engine.as_mut() {
                         bot.request_next_move(0);
                         match bot.next_move().await {
@@ -64,6 +65,7 @@ pub fn start() {
                                     &scope,
                                     json!({
                                         "type": "suggestion",
+                                        "request_id": request_id,
                                         "hold": movement.hold,
                                         "piece": piece_name(location.kind.0),
                                         "orientation": rotation_name(location.kind.1),
@@ -74,7 +76,7 @@ pub fn start() {
                                 );
                             }
                             None => {
-                                post(&scope, json!({ "type": "dead" }));
+                                post(&scope, json!({ "type": "dead", "request_id": request_id }));
                             }
                         }
                     } else {
