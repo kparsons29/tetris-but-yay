@@ -98,3 +98,47 @@ test("spectators cannot submit attack packets", async () => {
   await act(clients[2], {type:"match:attack",amount:4});
   assert.equal(last("alpha","match:attack"),undefined);
 });
+
+test("completed matches show results and keep the same room for rematches", async () => {
+  const {manager,clients,act,last} = setup();
+  const persisted = [];
+  manager.persistResult = async (room,result) => persisted.push({roomId:room.id,result});
+  await act(clients[0], {type:"room:create",name:"Rematch room"});
+  const id = last("alpha","room:state").room.id;
+  await act(clients[1], {type:"room:join",roomId:id});
+  await act(clients[2], {type:"room:join",roomId:id});
+  const room = manager.rooms.get(id);
+  room.phase = "playing";
+  room.matchPlayers = [{userId:"alpha",username:"alpha"},{userId:"bravo",username:"bravo"}];
+  room.stats.set("bravo",{score:1200,lines:8,pieces:14,sent:6,elapsed:30000});
+  await act(clients[0], {type:"match:finish",stats:{score:400,lines:3,pieces:8,sent:2,elapsed:30000},reason:"top-out"});
+  assert.equal(room.phase,"results");
+  assert.equal(last("bravo","match:results").results.winnerId,"bravo");
+  assert.equal(persisted.length,1);
+  await act(clients[1], {type:"room:continue"});
+  assert.equal(manager.rooms.get(id),room);
+  assert.equal(room.phase,"waiting");
+  assert.equal(room.members.size,3);
+  assert.equal(room.members.get("alpha").ready,false);
+  assert.equal(room.members.get("bravo").ready,false);
+  assert.equal(room.members.get("charlie").role,"spectating");
+});
+
+test("a forfeit records results and keeps remaining room members connected", async () => {
+  const {manager,clients,act,last} = setup();
+  const persisted = [];
+  manager.persistResult = async (room,result) => persisted.push(result);
+  await act(clients[0], {type:"room:create"});
+  const id = last("alpha","room:state").room.id;
+  await act(clients[1], {type:"room:join",roomId:id});
+  const room = manager.rooms.get(id);
+  room.phase = "playing";
+  room.matchPlayers = [{userId:"alpha",username:"alpha"},{userId:"bravo",username:"bravo"}];
+  manager.leaveRoom(clients[0],"left");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(room.phase,"results");
+  assert.equal(room.results.reason,"forfeit");
+  assert.equal(room.members.has("alpha"),false);
+  assert.equal(room.members.has("bravo"),true);
+  assert.equal(persisted.length,1);
+});
