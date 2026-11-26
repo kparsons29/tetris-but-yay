@@ -3,6 +3,9 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
+  function notifySettingsChanged() {
+    window.dispatchEvent(new CustomEvent("stacklab:settings-changed", { detail: window.StackLabGame?.getSettingsBundle?.() }));
+  }
   const W = 10, H = 20, CELL = 30;
   const COLORS = {
     I: "#45d8d0", J: "#568dff", L: "#ffab68", O: "#f5d66b",
@@ -180,6 +183,7 @@
   function saveKeybinds() {
     try { localStorage.setItem("stacklab-keybinds", JSON.stringify(keybinds)); } catch (_) {}
     renderKeybinds();
+    notifySettingsChanged();
   }
   function renderKeybinds() {
     const rows = $("keybindRows");
@@ -310,7 +314,8 @@
     sprint: { title: "40 LINE SPRINT", kicker: "SINGLEPLAYER / 40L SPRINT", objective: "CLEAR 40 LINES AS FAST AS POSSIBLE" },
     blitz: { title: "2 MIN BLITZ", kicker: "SINGLEPLAYER / 2 MIN BLITZ", objective: "SCORE AS MUCH AS POSSIBLE IN 2 MINUTES" },
     botplay: { title: "BOTPLAY", kicker: "SINGLEPLAYER / BOTPLAY", objective: "TOP OUT YOUR 1V1 OPPONENT" },
-    survival: { title: "SURVIVAL", kicker: "SINGLEPLAYER / SURVIVAL", objective: "SURVIVE FOR ONE MINUTE WITHOUT TOPPING OUT" }
+    survival: { title: "SURVIVAL", kicker: "SINGLEPLAYER / SURVIVAL", objective: "SURVIVE FOR ONE MINUTE WITHOUT TOPPING OUT" },
+    online: { title: "ONLINE VERSUS", kicker: "MULTIPLAYER / PUBLIC ROOM", objective: "OUTSTACK YOUR OPPONENT" }
   };
   const SURVIVAL_LINES_PER_MINUTE = [0, 5, 10, 16, 25, 38, 55, 78, 108, 150, 210];
   function survivalLinesPerMinute(difficulty = selectedSurvivalDifficulty) {
@@ -349,6 +354,8 @@
   let lastUiAt = 0;
   let apmWindow = [];
   let targetCursor = 0;
+  let onlineMatch = false, onlineSpectator = false, onlineMatchData = null, onlineSnapshotAt = 0;
+  const onlineSnapshots = new Map();
 
   function createPlayer() {
     const queue = newQueue();
@@ -481,9 +488,10 @@
         ? MODE_INFO.survival.kicker + " / LEVEL " + selectedSurvivalDifficulty + " · " + survivalLinesPerMinute() + " LPM"
         : MODE_INFO[currentMode].kicker;
     $("runObjective").textContent = MODE_INFO[currentMode].objective;
-    $("opponentSide").classList.toggle("hidden", currentMode !== "botplay");
-    $("playLayout").classList.toggle("botplay-layout",currentMode === "botplay");
-    $("boardObjective").classList.toggle("visible",currentMode !== "botplay");
+    $("opponentSide").classList.toggle("hidden", currentMode !== "botplay" && currentMode !== "online");
+    $("playLayout").classList.toggle("botplay-layout",currentMode === "botplay" || currentMode === "online");
+    $("gamePage").classList.toggle("online-match", currentMode === "online");
+    $("boardObjective").classList.toggle("visible",currentMode !== "botplay" && currentMode !== "online");
     botPreviewCacheKey = null;
     if (currentMode === "botplay" && bots[0]) $("botSpeedLabel").textContent = bots[0].targetPPS.toFixed(2) + " PPS";
     if (autostart) showPage("gamePage");
@@ -499,6 +507,15 @@
     held.clear();
     shift.dir = 0;
     $("pauseOverlay").classList.add("hidden");
+    if (onlineMatch) {
+      $("resultOverlay").classList.add("hidden");
+      $("battleStatus").textContent = "MATCH RESULT PENDING";
+      window.StackLabMultiplayer?.finishMatch({
+        score: player.score, lines: player.lines, pieces: player.pieces,
+        sent: player.sent, elapsed: runElapsed
+      }, won ? "finished" : (reason || "top-out"));
+      return;
+    }
     $("resultOverlay").classList.remove("hidden");
     const title = currentMode === "blitz" ? (won ? "TIME'S UP." : "STACK OVER.")
       : currentMode === "survival" ? (won ? "SURVIVED." : "STACK OVER.")
@@ -542,10 +559,130 @@
   }
   function beginSelectedMode() {
     currentMode = selectedMode;
+    onlineMatch = false;
+    onlineSpectator = false;
+    onlineMatchData = null;
+    onlineSnapshots.clear();
     resetMatch(true);
   }
+  function createRemoteDisplay(username) {
+    return {
+      name: username || "OPPONENT", board: makeBoard(), queue: newQueue(),
+      current: makePiece("I"), hold: null, holdUsed: false, score: 0, lines: 0,
+      level: 1, levelScore: 1, combo: -1, b2b: 0, incoming: [],
+      incomingClock: 900, alive: true, pieces: 0, sent: 0, spin: "—",
+      lastMove: "—", lastRotate: false, attackFlash: 0, dirty: true,
+      targetPPS: 0, rank: "ONLINE", engineReady: true, engineError: "",
+      lastGarbageHole: null, clearPopupRemaining: 0, attackPopupRemaining: 0,
+      cancelPopupRemaining: 0
+    };
+  }
+  function startOnlineMatch(match) {
+    onlineMatch = true;
+    onlineSpectator = false;
+    onlineMatchData = match;
+    onlineSnapshots.clear();
+    onlineSnapshotAt = 0;
+    currentMode = "online";
+    resetMatch(false);
+    const opponent = (match.players || []).find(item => item.userId !== match.localPlayerId);
+    player = createPlayer();
+    player.name = (match.players || []).find(item => item.userId === match.localPlayerId)?.username || "YOU";
+    bots = [createRemoteDisplay(opponent?.username || "OPPONENT")];
+    $("gameModeTitle").textContent = "ONLINE VERSUS";
+    $("gameModeKicker").textContent = "MULTIPLAYER / " + (match.roomId || "PUBLIC ROOM");
+    $("battleStatus").textContent = "MATCH IN PROGRESS";
+    $("botRunObjective").textContent = "LIVE OPPONENT";
+    $("playerBoard").setAttribute("aria-label", "Your online 10 by 20 playing field");
+    $("botBoard0").setAttribute("aria-label", "Opponent online 10 by 20 playing field");
+    const left = $("playerBoard").closest(".field-column")?.querySelector(".field-topline span");
+    const right = $("botBoard0").closest(".field-column")?.querySelector(".field-topline span");
+    if (left) left.textContent = "YOUR FIELD · " + player.name.toUpperCase();
+    if (right) right.textContent = "OPPONENT · " + bots[0].name.toUpperCase();
+    started = true; ended = false; paused = false; runElapsed = 0;
+    showPage("gamePage");
+    renderAll(true);
+  }
+  function startOnlineSpectator(match) {
+    onlineMatch = true;
+    onlineSpectator = true;
+    onlineMatchData = match;
+    onlineSnapshots.clear();
+    onlineSnapshotAt = 0;
+    currentMode = "online";
+    resetMatch(false);
+    const players = match.players || [];
+    player = createRemoteDisplay(players[0]?.username || "PLAYER 1");
+    bots = [createRemoteDisplay(players[1]?.username || "PLAYER 2")];
+    $("gameModeTitle").textContent = "LIVE MATCH";
+    $("gameModeKicker").textContent = "SPECTATING / " + (match.roomId || "PUBLIC ROOM");
+    $("battleStatus").textContent = "SPECTATING · INPUT DISABLED";
+    const left = $("playerBoard").closest(".field-column")?.querySelector(".field-topline span");
+    const right = $("botBoard0").closest(".field-column")?.querySelector(".field-topline span");
+    if (left) left.textContent = "PLAYER 1 · " + player.name.toUpperCase();
+    if (right) right.textContent = "PLAYER 2 · " + bots[0].name.toUpperCase();
+    started = true; ended = false; paused = false; runElapsed = 0;
+    showPage("gamePage");
+    renderAll(true);
+  }
+  function applyOnlineSnapshot(playerId, snapshot) {
+    if (!onlineMatch || !onlineMatchData || !snapshot || !Array.isArray(snapshot.board)) return;
+    const players = onlineMatchData.players || [];
+    const index = players.findIndex(item => item.userId === playerId);
+    if (index < 0) return;
+    onlineSnapshots.set(playerId, snapshot);
+    let target;
+    if (onlineSpectator) target = index === 0 ? player : bots[0];
+    else {
+      if (playerId === onlineMatchData.localPlayerId) return;
+      target = bots[0];
+    }
+    if (!target) return;
+    target.board = snapshot.board.map(row => row.slice());
+    target.current = {
+      ...makePiece(snapshot.current.type),
+      x: snapshot.current.x, y: snapshot.current.y, rot: snapshot.current.rot,
+      lastRotate: false, allSpinCandidate: false, kick: 0, lastAction: "remote"
+    };
+    target.hold = snapshot.hold || null;
+    target.queue = (snapshot.queue || []).slice();
+    target.score = Number(snapshot.score) || 0;
+    target.lines = Number(snapshot.lines) || 0;
+    target.pieces = Number(snapshot.pieces) || 0;
+    target.sent = Number(snapshot.sent) || 0;
+    target.incoming = Array(Math.min(60, Number(snapshot.incoming) || 0)).fill(0);
+    target.alive = snapshot.alive !== false;
+    target.level = 1 + Math.floor(target.lines / 10);
+    target.levelScore = target.level;
+    target.combo = -1; target.b2b = 0; target.dirty = true;
+    target.targetPPS = target.pieces / Math.max((Number(snapshot.elapsed) || runElapsed) / 1000, 1);
+    if (onlineSpectator && index === 0) drawBoard($("playerBoard"), player.board, player.current, false);
+    renderAll(true);
+  }
+  function publishOnlineSnapshot() {
+    if (!onlineMatch || onlineSpectator || !started || ended || !player || !window.StackLabMultiplayer) return;
+    const now = performance.now();
+    if (now - onlineSnapshotAt < 100) return;
+    onlineSnapshotAt = now;
+    window.StackLabMultiplayer.publishBoard({
+      board: player.board, current: player.current, hold: player.hold, queue: player.queue,
+      score: player.score, lines: player.lines, pieces: player.pieces, sent: player.sent,
+      incoming: player.incoming.length, elapsed: runElapsed, alive: player.alive
+    });
+  }
+  function receiveOnlineAttack(amount) {
+    if (!onlineMatch || onlineSpectator || !player?.alive) return;
+    enqueueGarbage(player, amount);
+    logEvent("INCOMING ATTACK · +" + amount, "danger");
+  }
+  function stopOnlineMatch() {
+    onlineMatch = false; onlineSpectator = false; onlineMatchData = null;
+    onlineSnapshots.clear(); started = false; ended = true;
+    held.clear(); shift.dir = 0;
+    $("gamePage")?.classList.remove("online-match");
+  }
   function togglePause() {
-    if (!started || ended || currentPage !== "gamePage") return;
+    if (onlineMatch || !started || ended || currentPage !== "gamePage") return;
     paused = !paused;
     $("pauseOverlay").classList.toggle("hidden", !paused);
     $("battleStatus").textContent = paused ? "PAUSED" : "RUN IN PROGRESS";
@@ -1030,6 +1167,15 @@
   }
 
   function sendPlayerAttack(amount) {
+    if (onlineMatch) {
+      if (amount <= 0 || onlineSpectator) return;
+      player.sent += amount;
+      player.attackFlash = 500;
+      apmWindow.push(Date.now());
+      window.StackLabMultiplayer?.sendAttack(amount);
+      logEvent("YOU → OPPONENT  +" + amount + " GARBAGE", "cyan");
+      return;
+    }
     const aliveBots = bots.filter((bot) => bot.alive);
     if (!aliveBots.length || amount <= 0) return;
     const target = aliveBots[targetCursor % aliveBots.length];
@@ -1277,7 +1423,7 @@
     }
   }
   function updateBots(dt) {
-    if (currentMode !== "botplay" || !bots.length || ended) return;
+    if (onlineMatch || currentMode !== "botplay" || !bots.length || ended) return;
     for (const bot of bots) {
       if (!bot.alive) continue;
       processGarbage(bot, dt, false);
@@ -1576,14 +1722,16 @@
       $("botComboHud").classList.toggle("active", bot.combo >= 0);
       $("botHoldHint").textContent = bot.hold ? "READY TO SWAP" : "EMPTY";
       $("botSpeedLabel").textContent = bot.targetPPS.toFixed(2) + " PPS";
-      $("botState0").textContent = bot.engineError ? "ENGINE ERROR" : !bot.alive ? "TOPPED OUT" : !bot.engineReady ? "LOADING COLD CLEAR" : started ? "RUN IN PROGRESS" : "READY";
-      $("botRunObjective").textContent = "LEVEL " + selectedBotLevel + " · " + bot.rank;
+      $("botState0").textContent = onlineMatch ? (!bot.alive ? "TOPPED OUT" : "LIVE") :
+        (bot.engineError ? "ENGINE ERROR" : !bot.alive ? "TOPPED OUT" : !bot.engineReady ? "LOADING COLD CLEAR" : started ? "RUN IN PROGRESS" : "READY");
+      $("botRunObjective").textContent = onlineMatch ? "LIVE · " + bot.name : "LEVEL " + selectedBotLevel + " · " + bot.rank;
     }
     $("speedLabel").textContent = currentMode === "survival"
       ? survivalLinesPerMinute() + " LINES / MIN"
       : (950 / gravityInterval(player.level)).toFixed(1) + "× GRAVITY";
     $("pauseButton").innerHTML = paused ? "▶ <span>RESUME</span>" : "Ⅱ <span>PAUSE</span>";
-    $("battleStatus").textContent = ended ? "RUN COMPLETE" : paused ? "PAUSED"
+    $("battleStatus").textContent = onlineMatch ? (onlineSpectator ? "SPECTATING · INPUT DISABLED" : ended ? "MATCH RESULT PENDING" : "ONLINE MATCH IN PROGRESS")
+      : ended ? "RUN COMPLETE" : paused ? "PAUSED"
       : currentMode === "botplay" && bots[0]?.engineError ? "COLD CLEAR ERROR"
       : currentMode === "botplay" && bots[0] && !bots[0].engineReady ? "LOADING COLD CLEAR"
       : started ? "RUN IN PROGRESS" : "READY";
@@ -1591,13 +1739,14 @@
     else if (currentMode === "cheese") $("runObjective").textContent = "DIG " + Math.max(0, 100 - player.lines) + " MORE LINES";
     else if (currentMode === "blitz") $("runObjective").textContent = "TIME LEFT · " + formatTime(blitzRemaining);
     else if (currentMode === "survival") $("runObjective").textContent = "SURVIVE · " + formatTime(survivalRemaining);
+    else if (currentMode === "online") $("runObjective").textContent = onlineSpectator ? "LIVE MATCH · SPECTATING" : "OUTSTACK YOUR OPPONENT";
     else $("runObjective").textContent = bots[0]?.alive ? "OUTSTACK THE " + (bots[0]?.rank || "BOT") + " BOT" : "OPPONENT TOPPED OUT";
     $("boardObjective").textContent = currentMode === "sprint" ? String(Math.max(0,40-player.lines))
       : currentMode === "cheese" ? String(Math.max(0,100-player.lines))
       : currentMode === "blitz" ? formatTime(blitzRemaining).slice(0,5)
       : currentMode === "survival" ? formatTime(survivalRemaining).slice(0,5) : "";
     $("boardObjective").dataset.label = currentMode === "blitz" || currentMode === "survival" ? "TIME LEFT" : "LINES LEFT";
-    $("boardObjective").classList.toggle("visible",currentMode !== "botplay");
+    $("boardObjective").classList.toggle("visible",currentMode !== "botplay" && currentMode !== "online");
 
   }
   function logEvent(message, tone) {
@@ -1615,8 +1764,9 @@
       applySurvivalBurst();
     }
     if (started && !paused && !ended) {
-      updatePlayer(dt);
-      updateBots(dt);
+      if (!onlineSpectator) updatePlayer(dt);
+      if (!onlineMatch) updateBots(dt);
+      if (!onlineSpectator) publishOnlineSnapshot();
       updateParticles(dt);
       renderAll();
     } else if (particles.length) {
@@ -1643,6 +1793,7 @@
   function saveSettings() {
     try { localStorage.setItem("stacklab-settings", JSON.stringify(settings)); } catch (_) {}
     updateSliderUI();
+    notifySettingsChanged();
   }
   function renderStatsSettings() {
     document.querySelectorAll("#statOptions input").forEach((input) => {
@@ -1654,6 +1805,7 @@
     selectedStats = [...document.querySelectorAll("#statOptions input:checked")].map((input) => input.value);
     try { localStorage.setItem("stacklab-visible-stats", JSON.stringify(selectedStats)); } catch (_) {}
     renderRunStats();
+    notifySettingsChanged();
   }
   function leaveToMenu() {
     started = false;
@@ -1718,6 +1870,7 @@
   $("pieceSkinSelect").addEventListener("change",(event) => {
     pieceSkin=event.target.value;
     try { localStorage.setItem("stacklab-piece-skin",pieceSkin); } catch (_) {}
+    notifySettingsChanged();
     previewCacheKey=null;
     renderSkinPreview();
     renderPreviews();
@@ -1726,6 +1879,7 @@
   $("themeSelect").addEventListener("change", (event) => {
     document.body.dataset.theme = event.target.value;
     try { localStorage.setItem("stacklab-theme", event.target.value); } catch (_) {}
+    notifySettingsChanged();
     renderAll();
   });
   try {
@@ -1778,6 +1932,8 @@
     }
     if (isTypingTarget(event.target)) return;
     const action = actionForKey(event.code);
+    if (onlineMatch && onlineSpectator) return;
+    if (onlineMatch && (action === "pause" || action === "restart" || action === "start")) return;
     if (action) event.preventDefault();
     if (!action) return;
     if (event.repeat && !["left","right","down"].includes(action)) return;
@@ -1819,7 +1975,7 @@
     };
     button.addEventListener("pointerdown", (event) => {
       event.preventDefault();
-      if (!started || currentPage !== "gamePage") return;
+      if (!started || currentPage !== "gamePage" || onlineSpectator) return;
       if (action === "left") beginShift(-1);
       else if (action === "right") beginShift(1);
       else if (action === "down") held.add("down");
@@ -1835,6 +1991,57 @@
     button.addEventListener("lostpointercapture", stop);
   });
 
+  window.StackLabGame = {
+    startOnlineMatch, startOnlineSpectator, applyOnlineSnapshot, receiveOnlineAttack, stopOnlineMatch,
+    getSettingsBundle() {
+      return {
+        settings: { ...settings }, pieceSkin, keybinds: { ...keybinds },
+        selectedStats: [...selectedStats], theme: document.body.dataset.theme || "aurora"
+      };
+    },
+    applySettingsBundle(bundle) {
+      if (!bundle || typeof bundle !== "object") return;
+      if (bundle.settings && typeof bundle.settings === "object") {
+        settings = { ...settings, ...bundle.settings };
+        settings.das = Math.max(0, Math.min(300, Number(settings.das) || 0));
+        settings.arr = Math.max(0, Math.min(100, Number(settings.arr) || 0));
+        settings.sdf = Math.max(1, Math.min(21, Number(settings.sdf) || 10));
+        settings.dasCancel = Boolean(settings.dasCancel);
+        try { localStorage.setItem("stacklab-settings", JSON.stringify(settings)); } catch (_) {}
+        updateSliderUI();
+      }
+      if (["classic","flat","glass","neon"].includes(bundle.pieceSkin)) {
+        pieceSkin = bundle.pieceSkin;
+        try { localStorage.setItem("stacklab-piece-skin", pieceSkin); } catch (_) {}
+        $("pieceSkinSelect").value = pieceSkin;
+        renderSkinPreview();
+      }
+      if (bundle.keybinds && typeof bundle.keybinds === "object") {
+        const next = { ...defaultKeybinds }, used = new Set();
+        for (const action of Object.keys(defaultKeybinds)) {
+          const value = bundle.keybinds[action];
+          if (typeof value === "string" && isBindableCode(value) && !used.has(value)) {
+            next[action] = value; used.add(value);
+          }
+        }
+        keybinds = next;
+        try { localStorage.setItem("stacklab-keybinds", JSON.stringify(keybinds)); } catch (_) {}
+        renderKeybinds();
+      }
+      if (Array.isArray(bundle.selectedStats)) {
+        selectedStats = bundle.selectedStats.filter(key => ["score","lines","time","level","combo","b2b","pieces","pps","apm","attack","incoming"].includes(key));
+        try { localStorage.setItem("stacklab-visible-stats", JSON.stringify(selectedStats)); } catch (_) {}
+        renderStatsSettings();
+      }
+      if (["aurora","midnight","sunset"].includes(bundle.theme)) {
+        document.body.dataset.theme = bundle.theme;
+        $("themeSelect").value = bundle.theme;
+        try { localStorage.setItem("stacklab-theme", bundle.theme); } catch (_) {}
+      }
+      previewCacheKey = null;
+      renderAll(true);
+    }
+  };
   updateSliderUI();
   renderKeybinds();
   updateModeScreen();
