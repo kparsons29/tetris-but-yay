@@ -1158,7 +1158,7 @@
   }
   function stopColdClearBot(bot) {
     if (!bot || !bot.engineWorker) return;
-    try { bot.engineWorker.postMessage(JSON.stringify({ type: "quit" })); } catch (_) {}
+    try { bot.engineWorker.postMessage({ type: "quit" }); } catch (_) {}
     bot.engineWorker.terminate();
     bot.engineWorker = null;
     bot.engineReady = false;
