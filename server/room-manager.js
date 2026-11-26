@@ -274,6 +274,7 @@ export class RoomManager {
     const room = this.roomFor(client);
     if (!room) return;
     const member = room.members.get(client.userId);
+    const wasActivePlayer = member?.role === "playing";
     if (member && room.phase === "playing" && member.role === "playing") {
       const winner = room.matchPlayers.find(player => player.userId !== client.userId);
       const loser = room.matchPlayers.find(player => player.userId === client.userId);
@@ -296,7 +297,7 @@ export class RoomManager {
       clearTimeout(room.countdownTimer);
       this.rooms.delete(room.id);
     } else {
-      if (room.phase === "waiting") {
+      if (room.phase === "waiting" && wasActivePlayer) {
         this.promoteWaitingSpectator(room);
         this.resetReady(room);
       }
