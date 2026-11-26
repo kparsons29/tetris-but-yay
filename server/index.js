@@ -4,15 +4,15 @@ import { WebSocket, WebSocketServer } from "ws";
 import { RoomManager } from "./room-manager.js";
 
 const PORT = Number(process.env.PORT) || 3000;
-const URL = process.env.SUPABASE_URL;
+const SUPABASE_URL = process.env.SUPABASE_URL;
 const ANON = process.env.SUPABASE_ANON_KEY;
 const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const origins = (process.env.FRONTEND_ORIGIN || "").split(",").map(value => value.trim()).filter(Boolean);
-if (!URL || !ANON) {
+if (!SUPABASE_URL || !ANON) {
   console.error("Set SUPABASE_URL and SUPABASE_ANON_KEY in Railway Variables.");
   process.exit(1);
 }
-const authClient = createClient(URL, ANON, { auth: { autoRefreshToken: false, persistSession: false } });
+const authClient = createClient(SUPABASE_URL, ANON, { auth: { autoRefreshToken: false, persistSession: false } });
 const admin = SERVICE ? createClient(URL, SERVICE, { auth: { autoRefreshToken: false, persistSession: false } }) : null;
 
 function send(client, packet) {
@@ -42,7 +42,7 @@ const server = http.createServer((request, response) => {
 });
 const wss = new WebSocketServer({ noServer: true, maxPayload: 65536 });
 server.on("upgrade", (request, socket, head) => {
-  const path = new URL(request.url || "/", "http://localhost").pathname;
+  const path = new globalThis.URL(request.url || "/", "http://localhost").pathname;
   if (path !== "/ws") return socket.destroy();
   const origin = request.headers.origin;
   if (origins.length && origin && !origins.includes(origin)) {
