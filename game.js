@@ -67,7 +67,7 @@
   const newQueue = () => [...shuffledSevenBag(), ...shuffledSevenBag()];
   const makePiece = (type) => ({
     type, x: Math.floor((W - BASE[type].size) / 2), y: 0, rot: 0,
-    lastRotate: false, kick: 0, lastAction: "spawn"
+    lastRotate: false, allSpinCandidate: false, kick: 0, lastAction: "spawn"
   });
   const cloneBoard = (board) => board.map((row) => row.slice());
   const clonePiece = (p) => ({ ...p });
@@ -552,6 +552,7 @@
     if (p.type === "O") {
       p.rot = to;
       p.lastRotate = true;
+      p.allSpinCandidate = isImmobileSpinPosition(player.board, p);
       p.kick = 0;
       p.lastAction = "rotate";
       resetLockOnAction();
@@ -573,6 +574,7 @@
         p.y += dy;
         p.rot = to;
         p.lastRotate = true;
+        p.allSpinCandidate = isImmobileSpinPosition(player.board, p);
         p.kick = i;
         p.lastAction = "rotate";
         resetLockOnAction();
@@ -595,6 +597,7 @@
     if (!collides(player.board, p, p.x + dx, p.y, p.rot)) {
       p.x += dx;
       p.lastRotate = false;
+      p.allSpinCandidate = false;
       p.lastAction = "move";
       resetLockOnAction();
       player.lastMove = dx < 0 ? "LEFT" : "RIGHT";
@@ -667,6 +670,10 @@
     const landing = ghostY(player.board, p);
     const distance = landing - p.y;
     p.y = landing;
+    if (distance > 0) {
+      p.lastRotate = false;
+      p.allSpinCandidate = false;
+    }
     player.score += Math.max(0, distance) * 2;
     player.lastMove = "HARD DROP";
     lockPlayer();
@@ -696,6 +703,7 @@
         player.current.y = landing;
         player.score += distance;
         player.current.lastRotate = false;
+        player.current.allSpinCandidate = false;
         player.lastMove = "SONIC DROP";
       }
       return;
@@ -708,6 +716,7 @@
       player.current.y++;
       player.score++;
       player.current.lastRotate = false;
+      player.current.allSpinCandidate = false;
       player.lastMove = "SOFT DROP";
     }
   }
@@ -748,7 +757,12 @@
       const interval = gravityInterval(player.level);
       while (gravityClock >= interval) {
         gravityClock -= interval;
-        if (!collides(player.board, player.current, player.current.x, player.current.y + 1)) player.current.y++;
+        if (!collides(player.board, player.current, player.current.x, player.current.y + 1)) {
+          player.current.y++;
+          player.current.lastRotate = false;
+          player.current.allSpinCandidate = false;
+          player.current.lastAction = "gravity";
+        }
       }
     }
     if (collides(player.board, player.current, player.current.x, player.current.y + 1)) {
@@ -783,31 +797,27 @@
   // a mini. Other pieces count as all-spins when they are immobile after
   // rotating. All-spins keep the normal clear attack value.
   function canMoveSpinPiece(board, piece, dx, dy) {
-    for (const [cx,cy] of SHAPES[piece.type][piece.rot]) {
-      const x = piece.x + cx + dx, y = piece.y + cy + dy;
-      // The spin test treats the edge of the field as a wall, including above
-      // the visible board. Normal movement still uses the game's spawn buffer.
-      if (x < 0 || x >= W || y < 0 || y >= H || board[y][x]) return false;
-    }
-    return true;
+    // Use the same collision rules as normal movement. In particular, the
+    // spawn buffer above row zero is open, not a solid ceiling.
+    return !collides(board, piece, piece.x + dx, piece.y + dy, piece.rot);
   }
-  function classifySpin(piece, board) {
-    // Spins require a successful rotation and a grounded piece.
-    if (!piece.lastRotate || canMoveSpinPiece(board, piece, 0, 1)) return "—";
-
-    // A full T-spin takes priority. A mini T-spin is also awarded by the
-    // 3-corner rule, even if the T can still move horizontally or upward.
-    const tSpin = piece.type === "T" ? classifyTSpin(piece, board) : "—";
-    if (tSpin === "T-SPIN") return tSpin;
-
-    // The immobility rule applies to T pieces as well as the other six pieces.
-    // This catches trapped T rotations that do not satisfy the 3-corner test.
-    const immobile = !canMoveSpinPiece(board, piece, -1, 0)
+  function isImmobileSpinPosition(board, piece) {
+    return !canMoveSpinPiece(board, piece, -1, 0)
       && !canMoveSpinPiece(board, piece, 1, 0)
       && !canMoveSpinPiece(board, piece, 0, -1)
       && !canMoveSpinPiece(board, piece, 0, 1);
-    if (immobile) return piece.type === "T" ? "MINI T-SPIN" : "ALL-SPIN";
-    return tSpin;
+  }
+  function classifySpin(piece, board) {
+    if (!piece.lastRotate) return "—";
+
+    // T-spins use the 3-corner test at lock; a qualifying kick upgrades a mini.
+    const tSpin = piece.type === "T" ? classifyTSpin(piece, board) : "—";
+    if (tSpin !== "—") return tSpin;
+
+    // An all-spin must be created by the rotation itself. Checking only at lock
+    // wrongly turns an ordinary hard-dropped placement into a spin.
+    if (piece.allSpinCandidate) return piece.type === "T" ? "MINI T-SPIN" : "ALL-SPIN";
+    return "—";
   }
   // Tetris 99-style base garbage and combo bonuses.
   // Combo 0 is the first consecutive line clear; combo 1 is the second.
@@ -956,6 +966,15 @@
     const removed = state.board.shift();
     state.board.push(Array.from({ length: W }, (_, x) => x === hole ? null : "G"));
     state.dirty = true;
+    if (isPlayer && player.current) {
+      // Raise the active piece with the field. Otherwise a rising garbage row
+      // can be inserted through a piece that has been soft-dropped near the floor.
+      player.current.y--;
+      player.current.lastRotate = false;
+      player.current.allSpinCandidate = false;
+      player.current.lastAction = "garbage-rise";
+      lockClock = 0;
+    }
     if (removed.some(Boolean)) {
       if (isPlayer) playerTopOut();
       else state.alive = false;
