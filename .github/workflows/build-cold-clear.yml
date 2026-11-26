@@ -6,7 +6,6 @@ on:
       - "game.js"
       - "cold-clear/main-worker.js"
       - "cold-clear/worker.js"
-      - "cold-clear/patches/**"
       - ".github/workflows/build-cold-clear.yml"
   workflow_dispatch:
 
@@ -33,13 +32,34 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      - name: Fetch the pinned original Cold Clear source
+      - name: Fetch and prepare the pinned original Cold Clear source
         env:
           COLD_CLEAR_REV: "279edd7c3177ff8077f6a930193397814b281f27"
         run: |
           git clone --filter=blob:none https://github.com/MinusKelvin/cold-clear.git "$RUNNER_TEMP/cold-clear"
           git -C "$RUNNER_TEMP/cold-clear" checkout --detach "$COLD_CLEAR_REV"
-          git -C "$RUNNER_TEMP/cold-clear" apply "$GITHUB_WORKSPACE/cold-clear/patches/disable-hold.patch"
+          python - "$RUNNER_TEMP/cold-clear/tbp/src/lib.rs" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          source = path.read_text()
+          old = """                let options = cold_clear::Options {
+                    speculate: matches!(randomizer, RandomizerState::SevenBag { .. }),
+                    ..Default::default()
+                };"""
+          new = """                let options = cold_clear::Options {
+                    speculate: matches!(randomizer, RandomizerState::SevenBag { .. }),
+                    // TBP v1.0 does not report hold usage in its suggestion.
+                    use_hold: false,
+                    // Bound background work so the browser worker stays responsive.
+                    max_nodes: 250_000,
+                    ..Default::default()
+                };"""
+          if source.count(old) != 1:
+              raise SystemExit("Expected Cold Clear TBP Options block was not found exactly once")
+          path.write_text(source.replace(old, new))
+          PY
 
       - name: Build the original Cold Clear Tetris Bot Protocol adapter
         env:
