@@ -13,7 +13,7 @@ if (!SUPABASE_URL || !ANON) {
   process.exit(1);
 }
 const authClient = createClient(SUPABASE_URL, ANON, { auth: { autoRefreshToken: false, persistSession: false } });
-const admin = SERVICE ? createClient(URL, SERVICE, { auth: { autoRefreshToken: false, persistSession: false } }) : null;
+const admin = SERVICE ? createClient(SUPABASE_URL, SERVICE, { auth: { autoRefreshToken: false, persistSession: false } }) : null;
 
 function send(client, packet) {
   if (client?.socket?.readyState === WebSocket.OPEN) client.socket.send(JSON.stringify(packet));
