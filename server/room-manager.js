@@ -277,7 +277,13 @@ export class RoomManager {
     if (member && room.phase === "playing" && member.role === "playing") {
       const winner = room.matchPlayers.find(player => player.userId !== client.userId);
       const loser = room.matchPlayers.find(player => player.userId === client.userId);
-      if (winner && loser) this.completeMatch(room, winner, loser, reason === "disconnected" ? "disconnect" : "forfeit");
+      if (winner && loser) {
+        this.completeMatch(room, winner, loser, reason === "disconnected" ? "disconnect" : "forfeit");
+        if (room.results) {
+          this.persistResult(room, room.results)
+            .catch(error => console.error("Could not save match result:", error?.message || error));
+        }
+      }
     }
     room.members.delete(client.userId);
     client.roomId = null;
