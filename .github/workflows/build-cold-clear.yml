@@ -1,0 +1,57 @@
+name: Build Cold Clear WebAssembly
+
+on:
+  pull_request:
+    paths:
+      - "cold-clear-wasm/**"
+      - "cold-clear/**"
+      - ".github/workflows/build-cold-clear.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cold-clear-wasm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Compile and package Cold Clear
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the pull request branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          persist-credentials: true
+
+      - name: Install Rust and the WebAssembly target
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.56.0
+          targets: wasm32-unknown-unknown
+
+      - name: Install the matching wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version 0.2.65 --locked
+
+      - name: Build the original Cold Clear engine for WebAssembly
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+        run: cargo build --release --manifest-path cold-clear-wasm/Cargo.toml --target wasm32-unknown-unknown
+
+      - name: Generate browser JavaScript bindings
+        run: wasm-bindgen --target no-modules --out-dir cold-clear --out-name cc_tbp target/wasm32-unknown-unknown/release/cc_tbp.wasm
+
+      - name: Verify the generated worker runtime
+        run: |
+          test -s cold-clear/cc_tbp.js
+          test -s cold-clear/cc_tbp_bg.wasm
+          grep -q "_web_worker_entry_point" cold-clear/cc_tbp.js
+          grep -q "start" cold-clear/cc_tbp.js
+
+      - name: Commit the compiled WebAssembly runtime to this branch
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Build Cold Clear WebAssembly runtime"
+          file_pattern: "cold-clear/cc_tbp.js cold-clear/cc_tbp_bg.wasm cold-clear/cc_tbp.d.ts"
