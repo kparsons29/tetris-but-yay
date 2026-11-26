@@ -7,7 +7,10 @@
   <meta name="description" content="STACK//LAB — a fast, configurable block-stacking game.">
   <title>STACK//LAB</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+  <script src="stacklab-config.js" defer></script>
   <script src="game.js" defer></script>
+  <script src="multiplayer.js" defer></script>
 </head>
 <body data-theme="aurora">
   <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
@@ -16,7 +19,7 @@
       <span class="brand-mark">S<span>+</span></span><span class="brand-name">STACK<span>//</span>LAB</span>
     </a>
     <div class="topbar-center"><span class="live-dot"></span><span>STACKING SYSTEM</span><span class="topbar-divider">/</span><span class="muted">BUILD 0.2</span></div>
-    <div class="topbar-actions"><span class="system-chip"><span class="system-dot"></span> SRS+ ENGINE</span></div>
+    <div class="topbar-actions"><span class="system-chip"><span class="system-dot"></span> SRS+ ENGINE</span><button class="account-button" id="accountButton" type="button">SIGN IN</button></div>
   </header>
 
   <main id="appRoot">
@@ -28,6 +31,7 @@
         <p class="hero-description">A clean, fast block-stacking lab. Tune your handling, find your rhythm, and chase the perfect run.</p>
         <div class="home-actions">
           <button class="primary-button large-button" id="openSingleplayer">SINGLEPLAYER <span>→</span></button>
+          <button class="secondary-button large-button" id="openMultiplayer">MULTIPLAYER <span>⌁</span></button>
           <button class="secondary-button large-button" id="openSettings">SETTINGS <span>⚙</span></button>
         </div>
         <div class="home-foot"><span>01 / PRACTICE YOUR CRAFT</span><span>NO ACCOUNT REQUIRED</span></div>
@@ -138,6 +142,58 @@
           <div class="visual-note"><span class="live-dot"></span><span>PREVIEW UPDATES AS YOU CHANGE THE SKIN</span></div>
         </section>
       </div>
+    </section>
+
+
+    <section class="page auth-page hidden" id="authPage">
+      <div class="page-top"><button class="back-button" id="authBack" type="button">← BACK</button><span class="eyebrow">PLAYER ACCOUNT / AUTHENTICATION</span></div>
+      <div class="auth-panel"><span class="section-kicker">STACK//LAB IDENTITY</span><h1 id="authHeading">SIGN IN<span>.</span></h1>
+        <p>Use your account to join public rooms and keep your settings synced.</p>
+        <form id="authForm">
+          <label for="authEmail">EMAIL ADDRESS</label><input id="authEmail" type="email" autocomplete="email" required maxlength="254" placeholder="you@example.com">
+          <div id="authUsernameField" class="hidden"><label for="authUsername">PUBLIC USERNAME</label><input id="authUsername" type="text" autocomplete="username" minlength="3" maxlength="16" pattern="[A-Za-z0-9_]{3,16}" placeholder="3–16 letters, numbers or underscores"></div>
+          <label for="authPassword">PASSWORD</label><input id="authPassword" type="password" autocomplete="current-password" minlength="8" required>
+          <button class="primary-button auth-submit" id="authSubmit" type="submit">SIGN IN →</button>
+        </form>
+        <button class="text-button auth-toggle" id="authModeToggle" type="button">New here? Create an account</button>
+        <p class="form-status" id="authStatus" role="status"></p>
+      </div>
+    </section>
+
+    <section class="page account-page hidden" id="accountPage">
+      <div class="page-top"><button class="back-button" id="accountBack" type="button">← BACK</button><span class="eyebrow">PLAYER ACCOUNT</span></div>
+      <div class="page-heading"><span class="section-kicker">ACCOUNT / PROFILE</span><h1>YOUR ACCOUNT<span>.</span></h1><p id="accountStatus">NOT SIGNED IN</p></div>
+      <div class="account-card"><div class="account-avatar">S<span>+</span></div><div><span class="section-kicker">PUBLIC USERNAME</span><h2 id="accountUsername">Guest</h2><p id="accountEmail"></p></div><button class="secondary-button hidden" id="accountSignOut" type="button">SIGN OUT</button></div>
+      <p class="account-note">Your game settings are synced to this account after you sign in.</p>
+    </section>
+
+    <section class="page multiplayer-page hidden" id="multiplayerPage">
+      <div class="page-top"><button class="back-button" data-page="homePage" type="button">← BACK</button><span class="eyebrow">ONLINE / PUBLIC MATCHMAKING</span></div>
+      <div class="page-heading"><span class="section-kicker">VERSUS / LIVE ROOMS</span><h1>MULTIPLAYER<span>.</span></h1><p>Join a public room, start a 1v1, or watch a match already in progress.</p></div>
+      <div class="multiplayer-create-card"><div><span class="section-kicker">CREATE A PUBLIC ROOM</span><h2>HOST A MATCH</h2><p>Your room stays open between matches so players can rematch or spectate.</p></div>
+        <div class="create-room-controls"><input id="newRoomName" type="text" maxlength="28" placeholder="Room name (optional)"><button class="primary-button" id="createRoomButton" type="button">CREATE ROOM →</button></div>
+      </div>
+      <div class="room-browser-head"><div><span class="section-kicker">PUBLIC MATCHES</span><h2>ROOM BROWSER</h2></div><button class="secondary-button" id="roomRefreshButton" type="button">↻ REFRESH</button></div>
+      <p class="form-status" id="roomBrowserStatus" role="status">CONNECTING…</p>
+      <div class="room-list" id="roomList"><div class="room-empty">Loading public rooms…</div></div>
+    </section>
+
+    <section class="page room-page hidden" id="roomPage">
+      <div class="page-top"><button class="back-button" id="roomLeaveButton" type="button">← LEAVE ROOM</button><span class="eyebrow">PUBLIC ROOM / WAITING AREA</span></div>
+      <div class="page-heading"><span class="section-kicker" id="roomCapacity">0/2 PLAYER SLOTS</span><h1 id="roomTitle">ROOM<span>.</span></h1><p>ROOM CODE <strong id="roomCode">--------</strong> · <span id="roomPhaseLabel">WAITING FOR PLAYERS</span></p></div>
+      <div class="room-lobby-card"><div class="room-roster-head"><div><span class="section-kicker">ROOM MEMBERS</span><h2>PLAYERS & SPECTATORS</h2></div><div class="room-countdown hidden" id="roomCountdown"></div></div>
+        <div class="room-player-list" id="roomPlayers"></div>
+        <div class="room-lobby-actions"><button class="secondary-button" id="roomRoleButton" type="button">SWITCH TO SPECTATING</button><button class="primary-button" id="roomReadyButton" type="button" disabled>READY UP</button></div>
+        <p class="form-status" id="roomStatus" role="status"></p>
+        <div class="room-result-notice hidden" id="roomResultNotice">The previous match is complete. Return from the results screen to prepare the next round.</div>
+      </div>
+    </section>
+
+    <section class="page online-results-page hidden" id="onlineResultsPage">
+      <div class="page-top"><span class="eyebrow">VERSUS / MATCH COMPLETE</span><span class="system-chip">RESULTS SAVED</span></div>
+      <div class="page-heading"><span class="section-kicker">FINAL RESULT</span><h1 id="onlineWinner">PLAYER WINS<span>.</span></h1><p>The room will stay open for another match.</p></div>
+      <div class="online-result-grid" id="onlineResultPlayers"></div>
+      <button class="primary-button results-return-button" id="resultsReturnButton" type="button">RETURN TO SAME ROOM →</button>
     </section>
 
     <section class="page game-page hidden" id="gamePage">
