@@ -43,22 +43,26 @@ jobs:
           import sys
 
           path = Path(sys.argv[1])
-          source = path.read_text()
-          old = """                let options = cold_clear::Options {
-                    speculate: matches!(randomizer, RandomizerState::SevenBag { .. }),
-                    ..Default::default()
-                };"""
-          new = """                let options = cold_clear::Options {
-                    speculate: matches!(randomizer, RandomizerState::SevenBag { .. }),
-                    // TBP v1.0 does not report hold usage in its suggestion.
-                    use_hold: false,
-                    // Bound background work so the browser worker stays responsive.
-                    max_nodes: 250_000,
-                    ..Default::default()
-                };"""
-          if source.count(old) != 1:
-              raise SystemExit("Expected Cold Clear TBP Options block was not found exactly once")
-          path.write_text(source.replace(old, new))
+          lines = path.read_text().splitlines()
+          start = next((i for i, line in enumerate(lines) if "let options = cold_clear::Options {" in line), -1)
+          if start < 0:
+              raise SystemExit("Cold Clear options block was not found")
+          end = next((i for i in range(start + 1, len(lines)) if lines[i].strip() == "};"), -1)
+          if end < 0 or not any("speculate: matches!" in line for line in lines[start:end]):
+              raise SystemExit("Cold Clear options block did not match the pinned source")
+          outer = lines[start][:len(lines[start]) - len(lines[start].lstrip())]
+          field = next(line[:len(line) - len(line.lstrip())] for line in lines[start + 1:end] if "speculate: matches!" in line)
+          lines[start:end + 1] = [
+              outer + "let options = cold_clear::Options {",
+              field + "speculate: matches!(randomizer, RandomizerState::SevenBag { .. }),",
+              field + "// TBP v1.0 does not report hold usage in its suggestion.",
+              field + "use_hold: false,",
+              field + "// Bound background work so the browser worker stays responsive.",
+              field + "max_nodes: 250_000,",
+              field + "..Default::default()",
+              outer + "};",
+          ]
+          path.write_text("\n".join(lines) + "\n")
           PY
 
       - name: Build the original Cold Clear Tetris Bot Protocol adapter
