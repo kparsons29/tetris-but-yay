@@ -320,11 +320,11 @@
   // and deliberately slower in-game placement cadence.
   const BOT_TIERS = [
     null,
-    { rank: "D–D+", pps: 0.38, apm: 8.1, app: 0.18, pace: 1000/0.38, maxNodes: 100000 },
-    { rank: "C−–C", pps: 0.48, apm: 11.85, app: 0.23, pace: 1000/0.48, maxNodes: 250000 },
-    { rank: "LOW B", pps: 0.60, apm: 19.1, app: 0.30, pace: 1000/0.60, maxNodes: 500000 },
-    { rank: "A", pps: 0.74, apm: 28.4, app: 0.37, pace: 1000/0.74, maxNodes: 1000000 },
-    { rank: "S+", pps: 0.90, apm: 56.4, app: 0.54, pace: 1000/0.90, maxNodes: 2000000 }
+    { rank: "D–D+", pps: 0.38, apm: 8.1, app: 0.18, pace: 1000/0.38 },
+    { rank: "C−–C", pps: 0.48, apm: 11.85, app: 0.23, pace: 1000/0.48 },
+    { rank: "LOW B", pps: 0.60, apm: 19.1, app: 0.30, pace: 1000/0.60 },
+    { rank: "A", pps: 0.74, apm: 28.4, app: 0.37, pace: 1000/0.74 },
+    { rank: "S+", pps: 0.90, apm: 56.4, app: 0.54, pace: 1000/0.90 }
   ];
   try {
     const savedStats = JSON.parse(localStorage.getItem("stacklab-visible-stats") || "null");
@@ -380,8 +380,8 @@
       incoming: [], incomingClock: 1000, lines: 0, sent: 0, alive: true,
       pieces: 0, score: 0, dirty: true, lastGarbageHole: null,
       clearPopupRemaining: 0, attackPopupRemaining: 0, cancelPopupRemaining: 0,
-      maxNodes: tier.maxNodes, engineWorker: null, engineReady: false,
-      enginePending: false, engineEpoch: 0, requestSequence: 0,
+      engineWorker: null, engineReady: false,
+      enginePending: false, engineEpoch: 0,
       readyMove: null, engineError: ""
     };
     state.current = takeNext(state);
