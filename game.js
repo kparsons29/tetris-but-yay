@@ -1933,7 +1933,7 @@
     if (isTypingTarget(event.target)) return;
     const action = actionForKey(event.code);
     if (onlineMatch && onlineSpectator) return;
-    if (onlineMatch && (action === "pause" || action === "restart")) return;
+    if (onlineMatch && (action === "pause" || action === "restart" || action === "start")) return;
     if (action) event.preventDefault();
     if (!action) return;
     if (event.repeat && !["left","right","down"].includes(action)) return;
