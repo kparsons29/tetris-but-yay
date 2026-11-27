@@ -16,7 +16,11 @@ const authClient = createClient(SUPABASE_URL, ANON, { auth: { autoRefreshToken: 
 const admin = SERVICE ? createClient(SUPABASE_URL, SERVICE, { auth: { autoRefreshToken: false, persistSession: false } }) : null;
 
 function send(client, packet) {
-  if (client?.socket?.readyState === WebSocket.OPEN) client.socket.send(JSON.stringify(packet));
+  if (client?.socket?.readyState !== WebSocket.OPEN) return;
+  // Board states are replaceable. Never let stale snapshots build up in a
+  // slow spectator/player connection and delay newer real-time game events.
+  if (packet?.type === "match:board" && client.socket.bufferedAmount > 65536) return;
+  client.socket.send(JSON.stringify(packet));
 }
 async function persistResult(room, result) {
   if (!admin) return;

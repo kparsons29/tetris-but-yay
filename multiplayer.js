@@ -305,7 +305,10 @@
 
   window.StackLabMultiplayer = {
     sendAttack:amount=>send({type:"match:attack",amount}),
-    publishBoard:state=>send({type:"match:board",state}),
+    publishBoard:state=>{
+      if(socket?.readyState!==WebSocket.OPEN || !socketAuthed || socket.bufferedAmount>65536) return false;
+      return send({type:"match:board",state});
+    },
     finishMatch:(stats,reason="top-out")=>send({type:"match:finish",stats,reason})
   };
   async function initialize() {
