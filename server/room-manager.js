@@ -209,7 +209,10 @@ export class RoomManager {
     };
     room.snapshots.set(client.userId, safe);
     room.stats.set(client.userId, safeStats(safe));
-    this.broadcastRoom(room, { type: "match:board", playerId: client.userId, state: safe });
+    const packet = { type: "match:board", playerId: client.userId, state: safe };
+    for (const recipient of this.clients) {
+      if (recipient !== client && recipient.roomId === room.id) this.send(recipient, packet);
+    }
   }
 
   sendAttack(client, amount) {
