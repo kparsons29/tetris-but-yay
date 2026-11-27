@@ -2,5 +2,5 @@
 window.STACKLAB_CONFIG = {
   supabaseUrl: "https://qgbgesmysilmvivibyzl.supabase.co",
   supabaseAnonKey: "sb_publishable_EpmP9z7wq0R16XSZwGMNfw__mEFtWQp",
-  multiplayerUrl: ""
+  multiplayerUrl: "wss://tetris-but-yay-production.up.railway.app"
 };
