@@ -355,7 +355,6 @@
   let apmWindow = [];
   let targetCursor = 0;
   let onlineMatch = false, onlineSpectator = false, onlineMatchData = null, onlineSnapshotAt = 0;
-  const onlineSnapshots = new Map();
 
   function createPlayer() {
     const queue = newQueue();
@@ -562,7 +561,6 @@
     onlineMatch = false;
     onlineSpectator = false;
     onlineMatchData = null;
-    onlineSnapshots.clear();
     resetMatch(true);
   }
   function createRemoteDisplay(username) {
@@ -581,7 +579,6 @@
     onlineMatch = true;
     onlineSpectator = false;
     onlineMatchData = match;
-    onlineSnapshots.clear();
     onlineSnapshotAt = 0;
     currentMode = "online";
     resetMatch(false);
@@ -607,7 +604,6 @@
     onlineMatch = true;
     onlineSpectator = true;
     onlineMatchData = match;
-    onlineSnapshots.clear();
     onlineSnapshotAt = 0;
     currentMode = "online";
     resetMatch(false);
@@ -629,35 +625,35 @@
     if (!onlineMatch || !onlineMatchData || !snapshot || !Array.isArray(snapshot.board)) return;
     const players = onlineMatchData.players || [];
     const index = players.findIndex(item => item.userId === playerId);
-    if (index < 0) return;
-    onlineSnapshots.set(playerId, snapshot);
+    if (index < 0 || (!onlineSpectator && playerId === onlineMatchData.localPlayerId)) return;
     let target;
     if (onlineSpectator) target = index === 0 ? player : bots[0];
-    else {
-      if (playerId === onlineMatchData.localPlayerId) return;
-      target = bots[0];
-    }
+    else target = bots[0];
     if (!target) return;
-    target.board = snapshot.board.map(row => row.slice());
+    // Parsed snapshots are already fresh objects. The remote display only reads
+    // its board, so keep the parsed arrays instead of cloning all 200 cells.
+    target.board = snapshot.board;
     target.current = {
       ...makePiece(snapshot.current.type),
       x: snapshot.current.x, y: snapshot.current.y, rot: snapshot.current.rot,
       lastRotate: false, allSpinCandidate: false, kick: 0, lastAction: "remote"
     };
     target.hold = snapshot.hold || null;
-    target.queue = (snapshot.queue || []).slice();
+    target.queue = snapshot.queue || [];
     target.score = Number(snapshot.score) || 0;
     target.lines = Number(snapshot.lines) || 0;
     target.pieces = Number(snapshot.pieces) || 0;
     target.sent = Number(snapshot.sent) || 0;
-    target.incoming = Array(Math.min(60, Number(snapshot.incoming) || 0)).fill(0);
+    const incomingCount = Math.min(60, Number(snapshot.incoming) || 0);
+    if (target.incoming.length !== incomingCount) target.incoming = Array(incomingCount).fill(0);
     target.alive = snapshot.alive !== false;
     target.level = 1 + Math.floor(target.lines / 10);
     target.levelScore = target.level;
     target.combo = -1; target.b2b = 0; target.dirty = true;
     target.targetPPS = target.pieces / Math.max((Number(snapshot.elapsed) || runElapsed) / 1000, 1);
-    if (onlineSpectator && index === 0) drawBoard($("playerBoard"), player.board, player.current, false);
-    renderAll(true);
+    // The main animation loop will draw this dirty board on its next frame.
+    // Rendering synchronously here caused an extra canvas + forced HUD render
+    // for every incoming network snapshot.
   }
   function publishOnlineSnapshot() {
     if (!onlineMatch || onlineSpectator || !started || ended || !player || !window.StackLabMultiplayer) return;
